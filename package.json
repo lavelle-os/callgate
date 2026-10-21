@@ -1,15 +1,14 @@
 {
   "name": "callgate",
-  "version": "0.1.0",
-  "description": "A keypad gate for your phone: robocalls stop at a code prompt, people you know ring straight through, everyone else leaves a message. Runs on your own Plivo number.",
+  "version": "0.2.0",
+  "description": "A keypad gate for your own phone number: robocalls stop at a code prompt, people you know ring through, everyone else leaves a message. Self-hosted on your own Plivo number.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "dev": "node --env-file=.env src/server.js",
     "test": "node --test test/*.test.js"
   },
-  "engines": {
-    "node": ">=18"
-  },
+  "engines": { "node": ">=20.6" },
   "license": "MIT",
   "private": false,
   "dependencies": {

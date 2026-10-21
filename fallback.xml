@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Speak voice="WOMAN">This line is having trouble right now. Please try again later, or send a text message.</Speak>
+  <Hangup/>
+</Response>
