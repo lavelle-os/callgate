@@ -197,6 +197,31 @@ test('the hourly caps count call starts per caller and overall', () => {
   assert.ok(lim.allow('3125550125', t + 3600 * 1000 + 10));
 });
 
+test('the local signature check agrees with the Plivo SDK on every URL shape', () => {
+  const sdk = require('plivo');
+  const local = require('../src/signature');
+  const token = 'dummy-token-for-tests';
+  const cases = [
+    ['POST', 'https://gate.example.com/answer', { From: '+13125550123', To: '+12055550199', CallUUID: 'abc' }],
+    ['POST', 'https://gate.example.com/gate?from=3125550123&held=1', { Digits: '4321', From: '+13125550123' }],
+    ['POST', 'https://gate.example.com:8443/recorded?from=3125550123', {}],
+    ['GET', 'https://gate.example.com/confirm', {}],
+    ['GET', 'https://gate.example.com/confirm?x=2&a=1', {}],
+    ['POST', 'https://gate.example.com/transcribed?from=3125550123', { transcription: 'Call me back', recording_id: 'r1' }],
+  ];
+  for (const [method, url, params] of cases) {
+    const nonce = 'n' + Math.random().toString(36).slice(2);
+    const sig = local.sign(method, url, nonce, token, params);
+    assert.ok(sdk.validateV3Signature(method, url, nonce, token, sig, params), `SDK accepts local signature for ${method} ${url}`);
+    assert.ok(local.validateV3Signature(method, url, nonce, token, sig, params), `local accepts its own for ${method} ${url}`);
+    assert.ok(!local.validateV3Signature(method, url, nonce, token, sig + 'x', params));
+    assert.ok(!local.validateV3Signature(method, url, nonce + 'x', token, sig, params));
+    assert.ok(!local.validateV3Signature(method, url, nonce, token + 'x', sig, params));
+    assert.ok(local.validateV3Signature(method, url, nonce, token, 'bogus,' + sig, params), 'comma-separated list, as the SDK allows');
+  }
+  assert.ok(!local.validateV3Signature('PUT', 'https://gate.example.com/x', 'n', token, 'sig', {}));
+});
+
 test('alert titles are plain ASCII', () => {
   assert.strictEqual(asciiTitle('Voicemail from 3125550123 ☃'), 'Voicemail from 3125550123 ');
 });

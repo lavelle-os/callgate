@@ -2,7 +2,7 @@
 'use strict';
 
 const express = require('express');
-const plivo = require('plivo');
+const { validateV3Signature } = require('./signature');
 const flow = require('./flow');
 const { load } = require('./config');
 
@@ -91,7 +91,7 @@ function build(cfg, deps = {}) {
     const fullUrl = cfg.baseUrl + req.originalUrl;
     let ok = false;
     try {
-      ok = Boolean(signature && nonce) && plivo.validateV3Signature(req.method, fullUrl, nonce, cfg.authToken, signature, req.method === 'POST' ? req.body || {} : {});
+      ok = validateV3Signature(req.method, fullUrl, nonce, cfg.authToken, signature, req.method === 'POST' ? req.body || {} : {});
     } catch (e) {
       ok = false;
     }
