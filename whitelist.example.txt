@@ -1,0 +1,4 @@
+# People who ring straight through, no code. One number per line. Lines starting with # are ignored.
+# Copy this file to whitelist.txt and add your own numbers.
+2055550111
+(205) 555-0122
