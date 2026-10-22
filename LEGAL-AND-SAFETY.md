@@ -18,6 +18,10 @@ Some US states require every party's consent to record a call. A spoken notice b
 
 Plivo's Record page says recordings and transcripts are deleted after 30 days, and that transcription is English only. Download any voicemail you want to keep.
 
+## Caller ID is not proof
+
+The owner's phone rings for the saved gate number, and the whitelist passes saved numbers through. Both trust the caller ID the network presents, and caller ID can be spoofed. A spoofed gate number rings the owner directly. Only the code is independent of caller ID. Keep the gate number private and treat a leak like a leaked code.
+
 ## The gate code and Plivo's logs
 
 The gate code is a shared secret. Anyone who learns it rings through. The server refuses codes shorter than four digits and the obvious ones, alerts you on every wrong try and every ring-through, and caps calls per hour. There is no lockout beyond that, so pick six digits or more if you can.

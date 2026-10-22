@@ -176,6 +176,10 @@ Forwarding replaces your carrier voicemail. If the gate is down, unanswered call
 - If your own voicemail stopped working after setup, you forwarded all calls instead of unanswered ones. Dial the cancel code and redo step 4.
 - Make one test call a month from the second phone.
 
+## A limit to know before you rely on it
+
+Your phone rings for the gate number because that number is saved as a contact. Caller ID can be spoofed. Someone who learns your gate number and spoofs it as their caller ID rings your phone directly, around the gate. The whitelist has the same weakness: it trusts the caller's number. The code is the only part of this that does not depend on caller ID. Treat the gate number like the code: don't publish it, and change the Plivo number if it leaks. An on-phone app could check more than caller ID, and iPhone does not allow one to answer calls, which is why this design exists and why it has this limit.
+
 ## What has not been tested
 
 Every branch of the call flow has an automated test ([test/flow.test.js](test/flow.test.js)), and the Plivo XML and callback fields were checked against Plivo's documentation. Nothing below has been checked on a real phone yet.
