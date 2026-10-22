@@ -15,7 +15,7 @@ someone calls your number
    you don't answer
    your carrier forwards the call to your gate number
         │
-        ├─ caller is on your whitelist ──────────────► your phone rings, shown as "Gate"
+        ├─ caller is on your whitelist ──────────────► "press any key", then your phone rings, shown as "Gate"
         ├─ caller is your gate number (a loop) ──────► refused
         └─ anyone else hears: "You have reached Pat. This call may be recorded and
            transcribed. If you have the code, enter it now. To leave a message,
@@ -176,9 +176,16 @@ Forwarding replaces your carrier voicemail. If the gate is down, unanswered call
 - If your own voicemail stopped working after setup, you forwarded all calls instead of unanswered ones. Dial the cancel code and redo step 4.
 - Make one test call a month from the second phone.
 
-## A limit to know before you rely on it
+## Caller ID is not proof, so the gate does not trust it
 
-Your phone rings for the gate number because that number is saved as a contact. Caller ID can be spoofed. Someone who learns your gate number and spoofs it as their caller ID rings your phone directly, around the gate. The whitelist has the same weakness: it trusts the caller's number. The code is the only part of this that does not depend on caller ID. Treat the gate number like the code: don't publish it, and change the Plivo number if it leaks. An on-phone app could check more than caller ID, and iPhone does not allow one to answer calls, which is why this design exists and why it has this limit.
+Caller ID can be spoofed. Two things in this design would trust it, and both are handled:
+
+- **The whitelist.** A known number still presses one key before it rings you. A person does that without thinking. A robocall wearing a friend's number never presses anything and lands in voicemail. If you'd rather known callers skip the key, set `WHITELIST_PRESS_KEY=false`.
+- **Your own phone.** It rings for the gate number because that number is a saved contact. Someone who learns the gate number and spoofs it rings you directly, around the gate. So every time the gate rings you, it also sends an alert that names the caller and why. **A ring from the gate contact with no alert beside it did not come from the gate.** Let it go to voicemail.
+
+The code is the one thing that depends on nothing the caller can forge. Keep the gate number as private as the code: callers never see it, since they dial your real number, so it only leaks if you publish it. Change the Plivo number if it does.
+
+Plivo verifies the STIR/SHAKEN signature on every inbound US call and shows it in its console logs. The server logs that verdict beside each call if Plivo sends it with the request, which the first live call will show.
 
 ## What has not been tested
 

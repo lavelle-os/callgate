@@ -102,7 +102,16 @@ function answer(fields, cfg) {
   }
 
   if (ctx.from && cfg.whitelist.has(ctx.from)) {
-    return response(ringOwner(cfg, ctx));
+    if (!cfg.whitelistPressKey) return response(ringOwner(cfg, ctx));
+    // A known number still presses one key. Caller ID can be spoofed; a robocall
+    // wearing a friend's number presses nothing and lands in voicemail.
+    return response(
+      `<GetInput action="${url(cfg, '/whitelist-ok', ctx)}" method="POST" inputType="dtmf" ` +
+        `numDigits="1" executionTimeout="${inputTimeout(cfg)}" retries="1" log="false" redirect="true">` +
+        speak(`${cfg.greeting} Press any key and I will connect you.`, cfg.voice) +
+        '</GetInput>' +
+        voicemail(cfg, ctx)
+    );
   }
 
   const prompt =
@@ -130,6 +139,16 @@ function gate(fields, cfg) {
     return response(voicemail(cfg, ctx));
   }
   return response(voicemail(cfg, ctx, 'That code did not match.'));
+}
+
+// A whitelisted caller pressed a key (or did not).
+function whitelistOk(fields, cfg) {
+  const ctx = context(fields);
+  const digits = String(fields.Digits || fields.digits || '').trim();
+  if (digits && ctx.from && cfg.whitelist.has(ctx.from)) {
+    return response(speak('Connecting you now.', cfg.voice) + ringOwner(cfg, ctx));
+  }
+  return response(voicemail(cfg, ctx));
 }
 
 function dialStatus(fields, cfg) {
@@ -165,4 +184,4 @@ function overCap(cfg) {
   return response(speak('This line is busy. Please try again later.', cfg.voice) + '<Hangup/>');
 }
 
-module.exports = { normalize, escapeXml, isHangupCallback, context, answer, gate, dialStatus, recorded, confirm, overCap };
+module.exports = { normalize, escapeXml, isHangupCallback, context, answer, gate, whitelistOk, dialStatus, recorded, confirm, overCap };

@@ -23,7 +23,7 @@ function asciiTitle(text) {
 
 // One line per webhook with the fields the first live tests need. Never the digits typed.
 function logCall(route, b) {
-  const keep = ['CallUUID', 'From', 'To', 'ForwardedFrom', 'CallStatus', 'Direction', 'DialStatus', 'DialHangupCause', 'DialRingStatus', 'HangupCause', 'HangupSource', 'RecordingID', 'RecordingDurationMs', 'call_uuid', 'recording_id', 'error'];
+  const keep = ['CallUUID', 'From', 'To', 'ForwardedFrom', 'CallerName', 'CallStatus', 'Direction', 'StirVerification', 'STIRVerification', 'StirAttestation', 'STIRAttestation', 'DialStatus', 'DialHangupCause', 'DialRingStatus', 'HangupCause', 'HangupSource', 'RecordingID', 'RecordingDurationMs', 'call_uuid', 'recording_id', 'error'];
   const out = {};
   for (const k of keep) if (b[k] !== undefined) out[k] = String(b[k]).slice(0, 80);
   console.log(`[call] ${route} ${JSON.stringify(out)}`);
@@ -122,7 +122,20 @@ function build(cfg, deps = {}) {
       console.warn(`[cap] call refused, hourly cap reached (${from ? 'caller ' + from : 'unknown caller'})`);
       return xml(res, flow.overCap(cfg));
     }
+    if (from && cfg.whitelist.has(from) && !cfg.whitelistPressKey && cfg.ringAlert) {
+      sendAlert('Ringing you', `Known caller ${from}, straight through.`);
+    }
     return xml(res, flow.answer(f, cfg));
+  });
+
+  // A known caller pressed a key: connect, and tell the owner the ring is real.
+  app.post('/whitelist-ok', signed, (req, res) => {
+    const f = fields(req);
+    logCall('whitelist-ok', f);
+    const digits = String(f.Digits || '').trim();
+    const from = flow.context(f).from || 'unknown caller';
+    if (digits && cfg.ringAlert) sendAlert('Ringing you', `Known caller ${from} pressed a key.`);
+    return xml(res, flow.whitelistOk(f, cfg));
   });
 
   app.post('/gate', signed, (req, res) => {
@@ -133,7 +146,7 @@ function build(cfg, deps = {}) {
     if (digits && digits !== '1') {
       if (digits === cfg.code) {
         console.log(`[gate] right code from ${from}`);
-        if (cfg.alertOnCode) sendAlert('Gate opened', `${from} entered the code and is ringing you.`);
+        if (cfg.ringAlert) sendAlert('Ringing you', `${from} entered the code.`);
       } else {
         console.warn(`[gate] wrong code from ${from}`);
         if (cfg.alertOnCode) sendAlert('Wrong code', `${from} tried a wrong code.`);
@@ -166,7 +179,8 @@ function build(cfg, deps = {}) {
       if (seen.size > RECENT_LIMIT * 4) seen.delete(seen.values().next().value);
     }
     if (silent) {
-      sendAlert('Silent caller', `${from} waited on the line without speaking.${flow.context(f).held ? '' : ' Ringing you.'}`);
+      if (flow.context(f).held) sendAlert('Silent caller', `${from} waited on the line without speaking, twice. Ended.`);
+      else if (cfg.ringAlert) sendAlert('Ringing you', `${from} stayed on the line without speaking.`);
       return;
     }
     sendAlert(`Voicemail from ${from}`, `${ms ? Math.round(ms / 1000) + ' seconds. ' : ''}${link || '(no recording link)'}`);

@@ -100,6 +100,12 @@ function load(env = process.env) {
     callsPerHourPerCaller: intSetting(env, 'CALLS_PER_HOUR_PER_CALLER', 6, 0, 1000),
     callsPerHour: intSetting(env, 'CALLS_PER_HOUR', 60, 0, 10000),
     screenOwnerRing: env.SCREEN_OWNER_RING !== 'false',
+    // Caller ID can be spoofed, so a whitelisted number still has to press one key.
+    // Robocalls spoofing a friend's number never press anything.
+    whitelistPressKey: env.WHITELIST_PRESS_KEY !== 'false',
+    // An alert every time the gate rings you. If your phone rings from the gate's number
+    // and no alert came, the call did not come from the gate.
+    ringAlert: env.RING_ALERT !== 'false',
     alertOnCode: env.ALERT_ON_CODE !== 'false',
     startupAlert: env.STARTUP_ALERT !== 'false',
     ntfyUrl,

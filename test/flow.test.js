@@ -25,6 +25,8 @@ const cfg = {
   callsPerHourPerCaller: 3,
   callsPerHour: 100,
   screenOwnerRing: true,
+  whitelistPressKey: true,
+  ringAlert: true,
   alertOnCode: true,
   whitelist: new Set(['2055550111']),
   checkSignatures: false,
@@ -82,12 +84,33 @@ test('settings: whitelist comes from the WHITELIST variable as well as the file'
   assert.deepStrictEqual([...c.whitelist].sort(), ['2055550111', '2055550122', '2055550133']);
 });
 
-test('a whitelisted caller rings straight through, in E.164, shown as the gate number, with screening', () => {
+test('a whitelisted caller is asked for one key press, because caller ID can be spoofed', () => {
   const x = flow.answer({ From: '12055550111' }, cfg);
+  assert.match(x, /<GetInput action="https:\/\/gate.example.com\/whitelist-ok\?from=2055550111"[^>]*numDigits="1"[^>]*log="false"/);
+  assert.match(x, /Press any key and I will connect you/);
+  assert.match(x.split('</GetInput>')[1], /<Record /);
+  assert.doesNotMatch(x, /<Dial /);
+});
+
+test('a whitelisted caller who presses a key rings through, in E.164, shown as the gate number, with screening', () => {
+  const x = flow.whitelistOk({ Digits: '5', from: '2055550111' }, cfg);
+  assert.match(x, /Connecting you now/);
   assert.match(x, /<Dial callerId="\+12055550199" timeout="15" timeLimit="1800"/);
   assert.match(x, /confirmSound="https:\/\/gate.example.com\/confirm" confirmKey="1"/);
   assert.match(x, /<Number>\+12055550100<\/Number>/);
   assert.match(x, /action="https:\/\/gate.example.com\/dial-status\?from=2055550111"/);
+});
+
+test('a whitelisted caller who presses nothing, or a forged whitelist callback, goes to voicemail', () => {
+  assert.match(flow.whitelistOk({ Digits: '', from: '2055550111' }, cfg), /<Record /);
+  const forged = flow.whitelistOk({ Digits: '5', from: '3125550123' }, cfg);
+  assert.match(forged, /<Record /);
+  assert.doesNotMatch(forged, /<Dial /);
+});
+
+test('the key press for known callers can be turned off, and then they ring straight through', () => {
+  const x = flow.answer({ From: '12055550111' }, { ...cfg, whitelistPressKey: false });
+  assert.match(x, /<Dial callerId="\+12055550199"/);
   assert.doesNotMatch(x, /GetInput/);
 });
 
@@ -281,6 +304,7 @@ test('server: wrong and right codes send alerts, a recording sends one alert eve
   const alerts = [];
   const sendAlert = async (title, body) => alerts.push(title + ' | ' + body);
   await withServer(cfg, { sendAlert }, async (origin) => {
+    await post(`${origin}/whitelist-ok?from=2055550111`, 'Digits=7');
     await post(`${origin}/gate?from=3125550123`, 'Digits=9999');
     await post(`${origin}/gate?from=3125550123`, 'Digits=4321');
     await post(`${origin}/recorded?from=3125550123`, 'RecordingID=rec1&RecordUrl=https://media.example.com/rec1.mp3&RecordingDurationMs=34000');
@@ -290,8 +314,9 @@ test('server: wrong and right codes send alerts, a recording sends one alert eve
     assert.strictEqual(hang.status, 200);
   });
   assert.deepStrictEqual(alerts, [
+    'Ringing you | Known caller 2055550111 pressed a key.',
     'Wrong code | 3125550123 tried a wrong code.',
-    'Gate opened | 3125550123 entered the code and is ringing you.',
+    'Ringing you | 3125550123 entered the code.',
     'Voicemail from 3125550123 | 34 seconds. https://media.example.com/rec1.mp3',
     'Transcript, 3125550123 | Call me back\n\nhttps://media.example.com/rec1.mp3',
   ]);

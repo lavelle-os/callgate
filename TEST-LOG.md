@@ -8,6 +8,8 @@ What has been checked, by whom, on what. Add a line when you test something new.
 | 2026-10-21 | Plivo XML attribute names and callback fields checked against Plivo's documentation (GetInput, Record, Dial, Hangup, Speak; Record action and transcription callbacks; signature scheme read from the plivo npm package) | match | the author and two independent reviews |
 | 2026-10-21 | Carrier forwarding codes: Verizon `*71`/`*73` found on Verizon's FAQ; T-Mobile `**61*`/`**62*`/`**67*`/`##004#` found on T-Mobile's short-code page; AT&T codes not found on an AT&T page | as stated in the README table | the reviews |
 | 2026-10-21 | Local signature check (src/signature.js) checked against the Plivo SDK's validator on six URL shapes; `npm audit --omit=dev` clean (the SDK is now a development dependency only; its own dependency tree still carries old findings, unused at runtime) | pass | the author |
+| 2026-10-22 | Whitelist press-any-key, ring alerts on every bridge, forged whitelist callback refused (automated tests) | pass | the author |
+| 2026-10-22 | Whether Plivo sends the inbound STIR/SHAKEN verdict as a request field (logged if present) | not yet done, needs a live call | |
 | 2026-10-21 | Live call on a real carrier | not yet done | |
 | 2026-10-21 | iPhone set to Silence: does the carrier forward a silenced call? | not yet done | |
 | 2026-10-21 | Press-1 screening on the bridged leg; what the owner's carrier voicemail does | not yet done | |
