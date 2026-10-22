@@ -3,13 +3,18 @@
 //
 // The path of a call:
 //   caller -> your phone (you don't answer) -> carrier forwards -> your Plivo number -> /answer
-//   /answer:  whitelisted -> ring you        loop (our own number calling back) -> hang up busy
+//   /answer:  whitelisted -> press any key -> /whitelist-ok -> ring you
+//             loop (our own number calling back) -> hang up busy
 //             everyone else -> greeting + code prompt
 //   /gate:    right code -> ring you         1, wrong code, or nothing -> voicemail
 //   /dial-status: you didn't pick up -> voicemail
 //   /recorded: a message was left -> goodbye. Silence after the tone -> ring you once, then goodbye.
-//   /confirm: what you hear when the gate rings you: "press 1 to take this call" (so your
-//             carrier's voicemail can't take the call for you)
+//   /confirm: what you hear when the gate rings you: "Call from your gate. <your word>. Press 1."
+//             The word proves the call came through the gate; press 1 keeps your own carrier
+//             voicemail from taking the call for you.
+//
+// The server decides whether a ring is allowed (the ring budget) and passes
+// { ringAllowed: false } when it is not; the flow then offers voicemail instead.
 
 'use strict';
 
@@ -56,10 +61,23 @@ function isHangupCallback(fields) {
   return ['completed', 'busy', 'failed', 'no-answer', 'cancel', 'timeout'].includes(status);
 }
 
+// True when this XML rings the owner. The server sends its "Ringing you" alert from this and
+// nothing else, so an alert and a ring are always the same event.
+function rings(xml) {
+  return /<Dial /.test(String(xml));
+}
+
+// A whitelisted caller's entry, with its label and whether it may skip the key press.
+function whitelistEntry(cfg, from) {
+  if (!from || !cfg.whitelist || !cfg.whitelist.has(from)) return null;
+  const info = (cfg.whitelistInfo && cfg.whitelistInfo.get(from)) || {};
+  return { number: from, label: info.label || '', nokey: !!info.nokey };
+}
+
 // Ring the real phone, shown as the gate number (saved in the owner's contacts, so an
-// iPhone set to silence unknown callers still rings). With screening on, the owner has to
-// press 1, so the owner's own carrier voicemail cannot take the call. If nobody presses 1
-// in time, /dial-status sends the caller to voicemail.
+// iPhone set to silence unknown callers still rings). With screening on, the owner hears
+// the confirm prompt and presses 1, so the owner's own carrier voicemail cannot take the
+// call. If nobody presses 1 in time, /dial-status sends the caller to voicemail.
 function ringOwner(cfg, ctx) {
   const confirm = cfg.screenOwnerRing
     ? ` confirmSound="${escapeXml(cfg.baseUrl + '/confirm')}" confirmKey="1"`
@@ -85,12 +103,14 @@ function voicemail(cfg, ctx, lead) {
   );
 }
 
-// Plivo's Input element waits 5 to 60 seconds for the keypad after the prompt finishes.
+const BUSY_LEAD = 'Sorry, they cannot take calls right now.';
+
+// Plivo's Input element accepts 5 to 60 seconds for the keypad.
 function inputTimeout(cfg) {
-  return Math.min(60, Math.max(5, Number(cfg.promptSeconds) || 10));
+  return Math.min(60, Math.max(5, Number(cfg.promptSeconds) || 20));
 }
 
-function answer(fields, cfg) {
+function answer(fields, cfg, opts = {}) {
   if (isHangupCallback(fields)) return response('');
   const ctx = context(fields);
 
@@ -101,14 +121,18 @@ function answer(fields, cfg) {
     return response('<Hangup reason="busy"/>');
   }
 
-  if (ctx.from && cfg.whitelist.has(ctx.from)) {
-    if (!cfg.whitelistPressKey) return response(ringOwner(cfg, ctx));
-    // A known number still presses one key. Caller ID can be spoofed; a robocall
-    // wearing a friend's number presses nothing and lands in voicemail.
+  const known = whitelistEntry(cfg, ctx.from);
+  if (known) {
+    if (!cfg.whitelistPressKey || known.nokey) {
+      return response(opts.ringAllowed === false ? voicemail(cfg, ctx, BUSY_LEAD) : ringOwner(cfg, ctx));
+    }
+    // A known number still presses one key. Caller ID can be spoofed; a recorded robocall
+    // wearing a friend's number presses nothing and lands in voicemail. Any key counts, so
+    // finishOnKey is off (a # would otherwise count as no key), and the wait is short.
     return response(
       `<GetInput action="${url(cfg, '/whitelist-ok', ctx)}" method="POST" inputType="dtmf" ` +
-        `numDigits="1" executionTimeout="${inputTimeout(cfg)}" retries="1" log="false" redirect="true">` +
-        speak(`${cfg.greeting} Press any key and I will connect you.`, cfg.voice) +
+        `numDigits="1" finishOnKey="none" executionTimeout="5" retries="1" log="false" redirect="true">` +
+        speak(`${cfg.greeting} Press any key.`, cfg.voice) +
         '</GetInput>' +
         voicemail(cfg, ctx)
     );
@@ -116,7 +140,7 @@ function answer(fields, cfg) {
 
   const prompt =
     `${cfg.greeting} This call may be recorded and transcribed. ` +
-    'If you have the code, enter it now. To leave a message, press 1, or just stay on the line.';
+    'If you have the code, enter it now. To leave a message, press 1, or stay on the line.';
 
   return response(
     `<GetInput action="${url(cfg, '/gate', ctx)}" method="POST" inputType="dtmf" ` +
@@ -129,10 +153,11 @@ function answer(fields, cfg) {
   );
 }
 
-function gate(fields, cfg) {
+function gate(fields, cfg, opts = {}) {
   const ctx = context(fields);
   const digits = String(fields.Digits || fields.digits || '').trim();
   if (cfg.code && digits === cfg.code) {
+    if (opts.ringAllowed === false) return response(voicemail(cfg, ctx, BUSY_LEAD));
     return response(speak('Connecting you now.', cfg.voice) + ringOwner(cfg, ctx));
   }
   if (digits === '1' || digits === '') {
@@ -142,10 +167,11 @@ function gate(fields, cfg) {
 }
 
 // A whitelisted caller pressed a key (or did not).
-function whitelistOk(fields, cfg) {
+function whitelistOk(fields, cfg, opts = {}) {
   const ctx = context(fields);
   const digits = String(fields.Digits || fields.digits || '').trim();
-  if (digits && ctx.from && cfg.whitelist.has(ctx.from)) {
+  if (digits && whitelistEntry(cfg, ctx.from)) {
+    if (opts.ringAllowed === false) return response(voicemail(cfg, ctx, BUSY_LEAD));
     return response(speak('Connecting you now.', cfg.voice) + ringOwner(cfg, ctx));
   }
   return response(voicemail(cfg, ctx));
@@ -160,23 +186,40 @@ function dialStatus(fields, cfg) {
   return response(voicemail(cfg, ctx, 'Sorry, they could not answer.'));
 }
 
-// A recording is finished. A real message gets a goodbye. Silence after the tone means a
-// person waited on the line (or a dispatcher is holding), so ring the owner once more
-// before giving up. "held" stops that from looping.
-function recorded(fields, cfg) {
-  const ctx = context(fields);
+// What a finished recording means. Plivo's pages do not say whether an all-silent recording
+// reports 0 ms or the length of the silence window, so both count as silent. A recording
+// shorter than the window is a real message: someone said a few words and hung up. A caller
+// whose call has already ended (CallStatus completed) cannot be rung.
+function classifyRecording(fields, cfg) {
   const ms = Number(fields.RecordingDurationMs || 0);
   const pressed = String(fields.Digits || '').trim();
-  const silent = ms > 0 && ms <= (cfg.silenceSeconds + 2) * 1000 && !pressed;
-  if (silent && !ctx.held) {
+  const gone = String(fields.CallStatus || '').toLowerCase() === 'completed';
+  const lo = Math.max(0, cfg.silenceSeconds - 1) * 1000;
+  const hi = (cfg.silenceSeconds + 2) * 1000;
+  const silent = !pressed && !gone && (ms === 0 || (ms >= lo && ms <= hi));
+  return { ms, pressed, gone, silent };
+}
+
+// A recording is finished. A real message gets a goodbye. Silence after the tone means a
+// person waited on the line (or a dispatcher is holding), so ring the owner once more
+// before giving up. "held" stops that from looping; the server's ring budget caps it.
+function recorded(fields, cfg, opts = {}) {
+  const ctx = context(fields);
+  const r = classifyRecording(fields, cfg);
+  if (r.silent && !ctx.held && opts.ringAllowed !== false) {
     return response(speak('Connecting you now.', cfg.voice) + ringOwner(cfg, { from: ctx.from, held: 1 }));
+  }
+  if (r.silent) {
+    return response(speak('Sorry, I could not reach them. I have sent them a note.', cfg.voice) + '<Hangup/>');
   }
   return response(speak('Thank you. Goodbye.', cfg.voice) + '<Hangup/>');
 }
 
-// Played to the owner when the gate rings them, before the call is bridged.
+// Played to the owner when the gate rings them, before the call is bridged. The word is the
+// proof: only Plivo can play it into a call that is really bridged through the gate.
 function confirm(fields, cfg) {
-  return response(speak('Call from your gate. Press 1 to take it.', cfg.voice));
+  const word = cfg.ownerWord ? ` ${cfg.ownerWord}.` : '';
+  return response(speak(`Call from your gate.${word} Press 1 to take it.`, cfg.voice));
 }
 
 // Too many calls this hour: say so and end it cheaply.
@@ -184,4 +227,4 @@ function overCap(cfg) {
   return response(speak('This line is busy. Please try again later.', cfg.voice) + '<Hangup/>');
 }
 
-module.exports = { normalize, escapeXml, isHangupCallback, context, answer, gate, whitelistOk, dialStatus, recorded, confirm, overCap };
+module.exports = { normalize, escapeXml, isHangupCallback, context, rings, whitelistEntry, classifyRecording, answer, gate, whitelistOk, dialStatus, recorded, confirm, overCap };

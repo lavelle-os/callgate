@@ -17,15 +17,36 @@ function e164(digits) {
 
 const WEAK_CODES = new Set(['1234', '4321', '0123', '12345', '54321', '123456', '654321', '1234567', '12345678', '87654321']);
 
+// One whitelist entry: a number, an optional label after "=", and an optional "!" at the end
+// for callers that cannot press a key (a pharmacy's automated call, an alarm company), who ring
+// straight through:
+//   2055550111             rings you after one key press; alerts show the number
+//   2055550111=Mom         same, and alerts say Mom
+//   2055550122=Pharmacy!   no key press, rings straight through
+function parseWhitelistEntry(text) {
+  const line = String(text).replace(/#.*/, '').trim();
+  if (!line) return null;
+  const nokey = line.endsWith('!');
+  const body = nokey ? line.slice(0, -1) : line;
+  const eq = body.indexOf('=');
+  const number = normalize(eq < 0 ? body : body.slice(0, eq));
+  if (number.length !== 10) return null;
+  const label = (eq < 0 ? '' : body.slice(eq + 1)).replace(/[^\x20-\x7e]/g, '').trim().slice(0, 40);
+  return { number, label, nokey };
+}
+
 function readWhitelist(file, envList) {
-  const out = new Set();
+  const set = new Set();
+  const info = new Map();
   const add = (line) => {
-    const n = normalize(line.replace(/#.*/, '').trim());
-    if (n.length === 10) out.add(n);
+    const entry = parseWhitelistEntry(line);
+    if (!entry) return;
+    set.add(entry.number);
+    info.set(entry.number, { label: entry.label, nokey: entry.nokey });
   };
   if (file && fs.existsSync(file)) fs.readFileSync(file, 'utf8').split(/\r?\n/).forEach(add);
   if (envList) String(envList).split(/[,\n;]/).forEach(add);
-  return out;
+  return { set, info };
 }
 
 function intSetting(env, name, fallback, min, max) {
@@ -72,15 +93,33 @@ function load(env = process.env) {
   const authToken = env.PLIVO_AUTH_TOKEN || '';
   if (!testing && (!authToken || /replace/i.test(authToken))) throw new Error('PLIVO_AUTH_TOKEN is missing. Copy it from the Plivo console overview page.');
 
-  const ntfyUrl = env.NTFY_URL || '';
-  if (ntfyUrl && !testing) {
-    const topic = ntfyUrl.replace(/\/+$/, '').split('/').pop() || '';
+  // The word the gate says to you, and only you, when it rings you. It lives here and in
+  // the confirm prompt. It never goes in an alert, a log or a URL. A call from the gate
+  // contact that does not open with this word did not come from the gate.
+  const screenOwnerRing = env.SCREEN_OWNER_RING !== 'false';
+  const ownerWord = String(env.OWNER_WORD || '').trim().replace(/\s+/g, ' ');
+  if (!testing && screenOwnerRing) {
+    const plain = /^[A-Za-z]+( [A-Za-z]+)?$/.test(ownerWord) && ownerWord.length >= 3 && ownerWord.length <= 24;
+    if (!plain || /replace|choose|yourword/i.test(ownerWord)) {
+      throw new Error('OWNER_WORD is missing or not a plain word. Pick one or two words, letters only, 3 to 24 characters, that the gate will say to you when it rings you. Not a word you use anywhere else.');
+    }
+  }
+
+  const ringAlert = env.RING_ALERT !== 'false';
+  const ntfyUrl = String(env.NTFY_URL || '').trim().replace(/\/+$/, '');
+  if (!testing) {
+    if (!ntfyUrl) throw new Error('NTFY_URL is missing. The alerts are the only way you learn that a voicemail arrived. Create a topic (see .env.example) and subscribe to it in the ntfy app.');
+    const https = /^https:\/\/[^/\s]+\/[^/\s]+$/.test(ntfyUrl);
+    const local = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/[^/\s]+$/.test(ntfyUrl);
+    if (!https && !local) throw new Error('NTFY_URL must be https://host/topic (http:// only for localhost). The topic name is a secret and must not travel in the clear.');
+    const topic = ntfyUrl.split('/').pop() || '';
     if (/replace/i.test(topic) || (/ntfy\.sh/i.test(ntfyUrl) && topic.length < 16)) {
       throw new Error('NTFY_URL topic is a placeholder or too short. On ntfy.sh the topic name is the only secret: use at least 16 random characters (openssl rand -hex 16).');
     }
   }
 
   const checkSignatures = env.CHECK_SIGNATURES !== 'false';
+  const wl = readWhitelist(env.WHITELIST_FILE || path.join(__dirname, '..', 'whitelist.txt'), env.WHITELIST);
 
   return {
     ownerPhone,
@@ -88,33 +127,40 @@ function load(env = process.env) {
     ownerPhoneE164: ownerPhone ? e164(ownerPhone) : '',
     serviceNumberE164: serviceNumber ? e164(serviceNumber) : '',
     code,
+    ownerWord,
     baseUrl,
     authToken,
     greeting: env.GREETING || 'You have reached a screened line.',
     voice: env.VOICE === 'MAN' ? 'MAN' : 'WOMAN',
     ringSeconds: intSetting(env, 'RING_SECONDS', 15, 5, 120),
-    promptSeconds: intSetting(env, 'PROMPT_SECONDS', 10, 5, 60),
+    // Plivo's pages do not say whether this timer starts when the prompt starts or when it
+    // ends, so the default leaves room for the prompt itself. Test 2 in the README measures it.
+    promptSeconds: intSetting(env, 'PROMPT_SECONDS', 20, 5, 60),
     silenceSeconds: intSetting(env, 'SILENCE_SECONDS', 10, 2, 60),
     maxMessageSeconds: intSetting(env, 'MAX_MESSAGE_SECONDS', 120, 2, 600),
     maxCallSeconds: intSetting(env, 'MAX_CALL_SECONDS', 1800, 60, 14400),
     callsPerHourPerCaller: intSetting(env, 'CALLS_PER_HOUR_PER_CALLER', 6, 0, 1000),
     callsPerHour: intSetting(env, 'CALLS_PER_HOUR', 60, 0, 10000),
-    screenOwnerRing: env.SCREEN_OWNER_RING !== 'false',
-    // Caller ID can be spoofed, so a whitelisted number still has to press one key.
-    // Robocalls spoofing a friend's number never press anything.
+    // How many times the gate may ring you in an hour, on every path together, and how many
+    // times a day one number may ring you by staying silent (the path that needs no code).
+    ringsPerHour: intSetting(env, 'RINGS_PER_HOUR', 10, 0, 1000),
+    silentRingsPerDay: intSetting(env, 'SILENT_RINGS_PER_DAY', 1, 0, 100),
+    screenOwnerRing,
+    // A whitelisted number still presses one key, because caller ID can be spoofed. The key
+    // stops recorded robocalls that send no tones; it does not stop a person.
     whitelistPressKey: env.WHITELIST_PRESS_KEY !== 'false',
-    // An alert every time the gate rings you. If your phone rings from the gate's number
-    // and no alert came, the call did not come from the gate.
-    ringAlert: env.RING_ALERT !== 'false',
+    // A heads-up every time the gate rings you. The proof is the word inside the call.
+    ringAlert,
     alertOnCode: env.ALERT_ON_CODE !== 'false',
     startupAlert: env.STARTUP_ALERT !== 'false',
     ntfyUrl,
     ntfyToken: env.NTFY_TOKEN || '',
-    whitelist: readWhitelist(env.WHITELIST_FILE || path.join(__dirname, '..', 'whitelist.txt'), env.WHITELIST),
+    whitelist: wl.set,
+    whitelistInfo: wl.info,
     checkSignatures,
     port: intSetting(env, 'PORT', 3000, 1, 65535),
     testing,
   };
 }
 
-module.exports = { load, readWhitelist, normalize, e164 };
+module.exports = { load, readWhitelist, parseWhitelistEntry, normalize, e164 };

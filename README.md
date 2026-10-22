@@ -1,6 +1,6 @@
 # callgate
 
-A keypad gate for your own phone number. Robocalls stop at a code prompt and never ring you. People you know ring straight through. Everyone else leaves a message, and the transcript lands on your phone.
+A keypad gate for your own phone number. Robocalls stop at a code prompt. People you know press one key and ring through. Everyone else leaves a message, and the transcript lands on your phone. When the gate rings you, it says a word only you and it know, so a spoofed call cannot pass as the gate.
 
 It is designed to work on iPhone and Android with nothing to install on the phone. You keep your number. The gate sits behind it and only catches the calls you don't answer.
 
@@ -19,11 +19,11 @@ someone calls your number
         ├─ caller is your gate number (a loop) ──────► refused
         └─ anyone else hears: "You have reached Pat. This call may be recorded and
            transcribed. If you have the code, enter it now. To leave a message,
-           press 1, or just stay on the line."
+           press 1, or stay on the line."
                 │
-                ├─ right code ───────────────────────► your phone rings; you press 1 to take it
+                ├─ right code ───────────────────────► your phone rings; you hear your word, press 1
                 ├─ wrong code, 1, or nothing ────────► voicemail, transcribed, sent to your phone
-                ├─ silence after the tone ───────────► your phone rings once more, then goodbye
+                ├─ silence after the tone ───────────► your phone rings once (budgeted), then goodbye
                 └─ you don't take the ring ──────────► voicemail
 ```
 
@@ -76,13 +76,14 @@ On Railway: **New Project → Deploy from GitHub repo**, pick your copy of this 
 | `OWNER_PHONE` | your real cell number, 10 digits |
 | `SERVICE_NUMBER` | the Plivo number from step 1, 10 digits |
 | `GATE_CODE` | 4 to 8 digits you will give to people who should reach you; not a run or a repeat |
+| `OWNER_WORD` | one or two plain words the gate says to you, and only you, when it rings you. Not a word you use anywhere else |
 | `BASE_URL` | the `https://` address from Railway, no slash at the end |
 | `PLIVO_AUTH_TOKEN` | Plivo console overview page: the **Auth Token**, not the Auth ID. If the number sits in a subaccount, that subaccount's token |
 | `GREETING` | how the gate introduces itself, for example `You have reached Pat.` |
-| `NTFY_URL` | `https://ntfy.sh/` plus a topic of at least 16 random characters (run `openssl rand -hex 16`); subscribe to the same topic in the ntfy app |
-| `WHITELIST` | numbers that ring straight through, separated by commas; leave empty for now |
+| `NTFY_URL` | required. `https://ntfy.sh/` plus a topic of at least 16 random characters (run `openssl rand -hex 16`); subscribe to the same topic in the ntfy app |
+| `WHITELIST` | numbers that skip the code, separated by commas; add `=Name` for a label and `!` for a caller that cannot press a key; leave empty for now |
 
-3. Deploy the staged changes. Open `BASE_URL` in a browser. You should see `callgate is running` and the answer URL. If you set `NTFY_URL`, the ntfy app should show "callgate started" within a few seconds. If it does not, fix the alerts before going on: nothing else will tell you a voicemail arrived.
+3. Deploy the staged changes. Open `BASE_URL` in a browser. You should see `callgate is running` and the answer URL. The ntfy app should show "callgate started" within a few seconds. If it does not, fix the alerts before going on: nothing else will tell you a voicemail arrived.
 
 ### 3. Point the number at the server
 
@@ -124,7 +125,7 @@ After dialing, do the read-back: call your own cell from the second phone, don't
 
 **iPhone**
 
-1. Open the **Contacts** app, tap **+**, name it `Gate`, enter your gate number, tap **Done**. Calls the gate passes to you show this number, and an iPhone that silences unknown callers only rings for contacts.
+1. Open the **Contacts** app, tap **+**, name it `Gate`, enter your gate number, tap **Done**. Calls the gate passes to you show this number, and an iPhone that silences unknown callers only rings for contacts. When you answer one, you hear "Call from your gate", then your word, then "press 1".
 2. Settings → Apps → Phone → Screen Unknown Callers: choose **Silence**. Do not choose **Ask Reason for Calling**: Apple's screening answers the call itself, and an answered call is never forwarded.
 3. Settings → Apps → Phone → Live Voicemail: **off**. Live Voicemail answers on the phone itself, so your carrier never sees an unanswered call to forward. One user report; untested here. If you don't see the switch, your carrier or region doesn't offer it.
 
@@ -139,12 +140,15 @@ Save the gate number as a contact. Google's page says calls screened by its Call
 From the second phone, in this order. Write each result in TEST-LOG.md with the carrier and the date.
 
 1. Call your number and don't answer. You should hear the greeting, not a busy tone.
-2. Enter the code. Your phone should ring, showing the Gate contact. Answer and press 1. You should be connected.
+2. Enter the code. Your phone should ring, showing the Gate contact. Answer: you should hear "Call from your gate", then your word. Press 1. You should be connected. On the caller's side, time the gap between the last word of the code prompt and the moment the gate stops listening, and write it down: it decides whether `PROMPT_SECONDS` counts from the start or the end of the prompt.
 3. Call again, press 1, leave a message, and hang up without pressing #. The ntfy alert with the recording link should arrive within a minute, and the transcript within a few minutes (Plivo's page says under five, longer for long messages, English only).
-4. Call again and stay silent through the greeting and the tone. After about ten seconds of silence your phone should ring. Don't answer. The caller should then hear goodbye, not an error.
+4. Call again and stay silent through the greeting and the tone. After about ten seconds of silence your phone should ring. Don't answer. The caller should hear that you could not be reached, not an error. Note the `RecordingDurationMs` the server logged for that call: it shows whether Plivo reports an all-silent recording as 0 or as the length of the silence window. Then repeat from a noisy room or a car. A second silent ring from the same number is refused for a day, so read the alert to see what the server decided.
 5. Set `WHITELIST` to the second phone's number in Railway's Variables, deploy, and call again. It should ring you with no greeting.
 6. Call, enter the code, and don't press 1 when your phone rings. The caller should land in voicemail, and the alert should arrive.
 7. Set your phone to **Silence** unknown callers (iPhone) and call from a number that is not a contact. Does the greeting play? Record the answer: it decides whether the iPhone setup works on your carrier.
+8. From the whitelisted phone, press `#` instead of a digit at the key prompt. You should still ring through.
+9. From the whitelisted phone, press nothing and hold it to a speaker playing a touch-tone recording. If the gate rings you, a robocall that plays tones would pass the key check too. Write that down.
+10. Set your phone to send every call straight to voicemail, then call with the code. Your carrier voicemail cannot press 1, so the caller should land in the gate's voicemail and you should get the alert.
 
 Then, once per carrier, the conditions that decide whether the design holds up: your phone busy on another call, powered off, in airplane mode, declining the call, on Wi-Fi calling, with the carrier's spam filter on, and with the server stopped. For each, note what the caller heard.
 
@@ -161,11 +165,12 @@ Then `curl -X POST -d From=13125550123 http://localhost:3000/answer` prints the 
 
 ## Cap your costs
 
-Anyone who learns your gate number can call it over and over, and every call costs minutes. Three things limit that:
+Anyone who learns your gate number can call it over and over, and every call costs minutes. Four things limit that:
 
-1. The server refuses more than `CALLS_PER_HOUR_PER_CALLER` calls from one number and `CALLS_PER_HOUR` overall (defaults 6 and 60), and caps a bridged call at `MAX_CALL_SECONDS`.
-2. In the Plivo console, open **Billing**: check **Auto Recharge** and turn it off if it is on, and keep the prepaid balance small. A zero balance stops the gate answering, which is the trade-off.
-3. Watch the ntfy alerts. Every wrong code and every ring-through sends one, so a leaked code shows up before it becomes harassment.
+1. The server refuses more than `CALLS_PER_HOUR_PER_CALLER` calls from one number and `CALLS_PER_HOUR` overall (defaults 6 and 60). Known callers are counted per number but not against the total, so a flood of strangers cannot lock out your family. A withheld caller ID counts as one caller. The first refusal in an hour sends you one alert.
+2. The gate rings you at most `RINGS_PER_HOUR` times an hour on every path together (default 10), and a number that reaches you by staying silent after the tone gets that once a day (`SILENT_RINGS_PER_DAY`). Over budget, callers get voicemail and you get one alert. `MAX_CALL_SECONDS` caps a bridged call.
+3. In the Plivo console, open **Billing**: check **Auto Recharge** and turn it off if it is on, and keep the prepaid balance small. A zero balance stops the gate answering, which is the trade-off.
+4. Watch the alerts. Every wrong code and every ring-through sends one, so a leaked code shows up before it becomes harassment.
 
 ## When it stops working
 
@@ -178,14 +183,15 @@ Forwarding replaces your carrier voicemail. If the gate is down, unanswered call
 
 ## Caller ID is not proof, so the gate does not trust it
 
-Caller ID can be spoofed. Two things in this design would trust it, and both are handled:
+Caller ID can be spoofed. Three things in this design could be fooled by it, and each has an answer:
 
-- **The whitelist.** A known number still presses one key before it rings you. A person does that without thinking. A robocall wearing a friend's number never presses anything and lands in voicemail. If you'd rather known callers skip the key, set `WHITELIST_PRESS_KEY=false`.
-- **Your own phone.** It rings for the gate number because that number is a saved contact. Someone who learns the gate number and spoofs it rings you directly, around the gate. So every time the gate rings you, it also sends an alert that names the caller and why. **A ring from the gate contact with no alert beside it did not come from the gate.** Let it go to voicemail.
+- **The whitelist.** A known number still presses one key before it rings you. That stops a recorded robocall wearing a friend's number, because a recording sends no tones. It does not stop a person who spoofs the number and presses a key, and whether a robocall that plays tones gets through is untested (test 9). The whitelist is a convenience for people you know, not a lock. If a caller cannot press a key (a pharmacy's automated call, an alarm company), mark the entry with `!`. If you'd rather nobody pressed one, set `WHITELIST_PRESS_KEY=false`.
+- **Your own phone.** It rings for the gate number because that number is a saved contact. Someone who learns the gate number and spoofs it rings you directly, around the gate. The proof is the word: every call the gate bridges to you opens with "Call from your gate", then your `OWNER_WORD`, before you press 1. Only Plivo can play that into a call it is really bridging. **Answer a Gate call and hear no word: hang up.** The "Ringing you" alert is a heads-up, sent before the ring at high priority. It is not the proof, because an alert can be late, lost, or forged by anyone who learns your ntfy topic.
+- **The silent line.** A caller who stays silent after the tone rings you once with no code and no key, because a person who is holding, or a dispatcher calling back, should not be stranded. That path is budgeted (once a day per number, inside the hourly ring budget), and it still opens with your word.
 
-The code is the one thing that depends on nothing the caller can forge. Keep the gate number as private as the code: callers never see it, since they dial your real number, so it only leaks if you publish it. Change the Plivo number if it does.
+The code and the word are the two things that depend on nothing the caller can forge. Keep the gate number as private as the code: callers never see it, since they dial your real number, so it only leaks if you publish it. Change the Plivo number if it does.
 
-Plivo verifies the STIR/SHAKEN signature on every inbound US call and shows it in its console logs. The server logs that verdict beside each call if Plivo sends it with the request, which the first live call will show.
+Plivo verifies the STIR/SHAKEN signature on inbound US calls and shows the verdict in its console. The server logs whatever field Plivo sends beside each call, and logs the names of all the fields once per route, so the first live call shows whether a verdict arrives at all. A carrier-forwarded call is a new leg, so its verdict may describe the forwarding, not the original caller. Nothing is decided on it.
 
 ## What has not been tested
 
@@ -198,6 +204,11 @@ Every branch of the call flow has an automated test ([test/flow.test.js](test/fl
 - That a bridged call shown as the gate number is not labeled spam.
 - That Plivo calls `/recorded` when the caller hangs up instead of pressing #.
 - That the fallback XML is accepted from the host you choose.
+- That the word in the confirm prompt is heard on a bridged call before the press-1 prompt, and that the owner's carrier voicemail cannot take the call.
+- What `RecordingDurationMs` Plivo reports for an all-silent recording and for a noisy room. The silence test assumes 0 or the length of the silence window.
+- Whether `PROMPT_SECONDS` counts from the start or the end of the prompt.
+- Whether a `#` at the key prompt counts as a key, and whether a robocall that plays tones passes it.
+- Which STIR/SHAKEN field, if any, Plivo sends on an inbound forwarded call.
 
 ## Where this came from
 

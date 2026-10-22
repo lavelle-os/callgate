@@ -24,7 +24,9 @@ The owner's phone rings for the saved gate number, and the whitelist passes save
 
 ## The gate code and Plivo's logs
 
-The gate code is a shared secret. Anyone who learns it rings through. The server refuses codes shorter than four digits and the obvious ones, alerts you on every wrong try and every ring-through, and caps calls per hour. There is no lockout beyond that, so pick six digits or more if you can.
+The gate code is a shared secret. Anyone who learns it rings through. The server refuses codes shorter than four digits and the obvious ones, alerts you on every wrong try and every ring-through, and caps calls per hour and rings per hour. There is no lockout beyond that, so pick six digits or more if you can.
+
+The owner's word (`OWNER_WORD`) is spoken to you inside every call the gate bridges, before you press 1, and is how you know a ring came through the gate. It goes to Plivo inside the XML Plivo fetches for that prompt, so Plivo's request logs may hold it. It never goes in an alert, a log line or a URL. It proves the call's path; it unlocks nothing, so a leak costs you a new word, not your privacy.
 
 Plivo logs keypad input by default. The gate asks Plivo not to (`log="false"` on the input element). After your first test call, open the call in the Plivo console and confirm the digits are not shown.
 
