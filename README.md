@@ -115,9 +115,17 @@ Forwarding here is "conditional": your phone still rings first, and only the cal
 
 | Carrier | Turn on | Turn off | Source |
 |---|---|---|---|
-| Verizon | `*71GATE` (covers busy and no answer) | `*73` | Verizon's call-forwarding FAQ, read 2026-10-21 |
-| T-Mobile | `**61*1GATE#` (no reply), `**62*1GATE#` (not reachable), `**67*1GATE#` (busy); delay form `**61*1GATE**30#` | `##004#` (resets forwarding to default) | T-Mobile's self-service short codes page, read 2026-10-21 |
-| AT&T | Not confirmed on an AT&T page as of 2026-10-21. Third-party guides list `*61*GATE#`, `*62*GATE#`, `*67*GATE#` | `##004#` | ask AT&T or test with step 0 |
+| Verizon | `*71GATE` (busy and no answer; the phone-off case is not documented). On an iPhone, turn Live Voicemail off first (step 5): Verizon's own page says so | `*73` | Verizon's call-forwarding pages, read 2026-10-22 |
+| AT&T | One at a time, pressing Call and hanging up between them: `*61*GATE#` (no answer), `*62*GATE#` (unreachable), `*67*GATE#` (busy). On Android there is a menu instead: Phone → Settings → Calling accounts → your SIM → Call forwarding → When unanswered, When unreachable, When busy | `##61#`, `##62#`, `##67#` | The codes appear on Google's Voice help page, not on any AT&T page; the Android menu is on AT&T's device-support pages. Read 2026-10-22 |
+| T-Mobile | `**61*1GATE#` (no reply), `**62*1GATE#` (off or no signal), `**67*1GATE#` (busy). Ring delay: `**61*1GATE**30#` (5 to 30 seconds) | `##61#`, `##62#`, `##67#`; `##004#` resets all forwarding | T-Mobile's self-service short codes page, read 2026-10-22 |
+| Mint Mobile | The three T-Mobile codes above. Mint's Scam Screener stops working while forwarding is on | `##61#`, `##62#`, `##67#` | Mint's help pages, read 2026-10-22 |
+| Tello | The three T-Mobile codes above; the plan must include data | `##61#`, `##62#`, `##67#` | Tello's help page, read 2026-10-22 |
+| Xfinity Mobile | `*71GATE` | `*73` | Xfinity's call-forwarding article, read 2026-10-22 |
+| Spectrum Mobile | `*71GATE`, or the My Spectrum app: Your Services → Mobile → the line → Call Forwarding → Busy Line & Missed Calls | `*73` | Spectrum's support article, read 2026-10-22 |
+| Ting | First in the Ting account: Device settings → the number → Minutes → "Can use call forwarding" on. Then `*71GATE` | `*73` | Ting's help page, read 2026-10-22 |
+| Visible | `*71GATE` is documented for busy only; no no-answer code was found | `*73` | Visible's plan-features page, read 2026-10-22 |
+
+Not documented by the carrier, so step 0 decides: Google Fi (its app offers only Don't forward, Ring all numbers, Always forward), Straight Talk and Total Wireless (`*72` forwards every call; nothing conditional), Red Pocket (unconditional only), Cricket, Metro by T-Mobile, Consumer Cellular, Boost, and legacy US Cellular lines. On any GSM carrier the standard codes `**61*GATE#`, `**62*GATE#`, `**67*GATE#` (reset `##004#`) are worth one try before the step-0 test. Resellers ride the big three's networks and do not always pass conditional forwarding through.
 
 After dialing, do the read-back: call your own cell from the second phone, don't answer, and confirm you reach the gate. Turn Wi-Fi off on your phone while you dial a code; Apple's and T-Mobile's pages say some codes don't work over Wi-Fi calling.
 
@@ -126,14 +134,20 @@ After dialing, do the read-back: call your own cell from the second phone, don't
 **iPhone**
 
 1. Open the **Contacts** app, tap **+**, name it `Gate`, enter your gate number, tap **Done**. Calls the gate passes to you show this number, and an iPhone that silences unknown callers only rings for contacts. When you answer one, you hear "Call from your gate", then your word, then "press 1".
-2. Settings → Apps → Phone → Screen Unknown Callers: choose **Silence**. Do not choose **Ask Reason for Calling**: Apple's screening answers the call itself, and an answered call is never forwarded.
-3. Settings → Apps → Phone → Live Voicemail: **off**. Live Voicemail answers on the phone itself, so your carrier never sees an unanswered call to forward. One user report; untested here. If you don't see the switch, your carrier or region doesn't offer it.
+2. Settings → Apps → Phone → Screen Unknown Callers: **Silence** once the gate is proven (test 7 checks it). Never choose **Ask Reason for Calling**: Apple's screening answers the call itself, and an answered call is never forwarded.
+3. Settings → Apps → Phone → Live Voicemail: **off**. Live Voicemail answers on the phone itself, so your carrier never sees an unanswered call to forward. Verizon's own support page says to turn it off when using `*71`. If you don't see the switch, your carrier or region doesn't offer it.
+4. Settings → Apps → Phone → Call Forwarding: leave that switch **off**. It forwards every call; the carrier code does the conditional one.
+5. For the first tests, Screen Unknown Callers on **Never** and any Focus mode off, so an unanswered call is simply unanswered. Carrier spam apps can also answer or route a call before the forward: Verizon Call Filter (My Verizon app → Call Filter → Settings → spam routing), AT&T ActiveArmor (Calls → Call Routing), T-Mobile Scam Block (`#632#` turns it off, `#662#` on, `#787#` shows status), Cricket Call Defense. Whether each one steals the call from the forward is untested.
 
 **Whether a silenced call is forwarded is the main untested premise for iPhone users.** Apple says a silenced call is "sent to voicemail". Whether the network sees that as unanswered (forwarded to the gate) or as declined (carrier voicemail) has not been checked on any carrier. Step 6 tests it.
 
 **Android**
 
-Save the gate number as a contact. Google's page says calls screened by its Call Screen are not forwarded, so turn off Call Screen (and Samsung Smart Call) or they answer before the forward.
+Save the gate number as a contact. Then turn off anything that answers a call on the phone, because an answered call is never forwarded:
+
+- **Pixel:** Phone app → Settings → Spam and Call Screen → automatic screening **off**. Google's page: "If you use call forwarding, don't use automatic call screening. Screened calls won't be forwarded."
+- **Samsung Galaxy:** Phone app → Settings → Call screening → Auto screen calls **off** (One UI 8.5 and later). Conditional forwarding has a menu here too: Phone app → Settings → Supplementary services → Call forwarding → Forward when busy, when unanswered, when unreachable → your gate number → Enable. Leave "Block calls from unknown numbers" off while testing.
+- **Any Android:** the carrier menu on AT&T phones is Phone app → Settings → Calling accounts → your SIM → Call forwarding.
 
 ### 6. Test it before you trust it
 
@@ -193,11 +207,30 @@ The code and the word are the two things that depend on nothing the caller can f
 
 Plivo verifies the STIR/SHAKEN signature on inbound US calls and shows the verdict in its console. The server logs whatever field Plivo sends beside each call, and logs the names of all the fields once per route, so the first live call shows whether a verdict arrives at all. A carrier-forwarded call is a new leg, so its verdict may describe the forwarding, not the original caller. Nothing is decided on it.
 
+## Texts and FaceTime are outside the gate
+
+**Text messages.** Carrier forwarding carries calls only. Verizon's FAQ says call forwarding "won't forward text messages, only calls," and Xfinity and Spectrum say the same. The gate never sees a text sent to your number, on any carrier, and cannot hold, challenge, answer or delete one. What works today is on the phone:
+
+- iPhone: Messages → Filters → Manage Filtering: **Screen Unknown Senders** (iOS 26), **Filter spam** (on by default), and a **Text Message Filter** app if you install one. Report a text with Report Spam or by forwarding it to 7726, which reports the sender and does not stop it. Block Contact blocks that number in Phone and FaceTime too.
+- Android: Google Messages → your picture → Messages settings → Protection & Safety → **Spam protection** on; touch and hold a conversation → Block → Report spam. Samsung Messages → Settings → Block numbers and spam.
+
+Apple does let a phone-side filter app hand the sender and text of an SMS from a non-contact to one fixed server, which could be a server like this one. That filter can only sort a text into Junk, Promotion or Transaction; it cannot reject, reply, forward or hold one, it never sees iMessage or texts from contacts, and it needs an App Store app and a paid developer account. Not built.
+
+**FaceTime audio.** A FaceTime call runs through Apple's servers and your data connection, not your carrier's voice line, so a carrier forward never sees it. That is why a FaceTime audio call from a stranger reaches a phone that forwards every other unknown call. The settings are on the iPhone:
+
+1. Settings → Apps → FaceTime → **Silence Unknown Callers** on (iOS 17 and later; the iOS 17 path is Settings → FaceTime). Unknown numbers are silenced and listed in Recents; contacts and recent outgoing calls still ring.
+2. On iOS 26 and later, also **Unknown Callers** on (missed FaceTime calls from unknown numbers move to a hidden list) and **FaceTime Spam** on.
+3. Stronger: under **You can be reached by FaceTime at**, uncheck your phone number and keep only your email. Then nobody who has only your number can FaceTime you, wanted or not.
+4. Per caller: while it rings, tap the notification → Block Caller. Afterward, in FaceTime history, tap the call → Block Contact, or touch and hold it → Report Spam.
+
+One side effect: a silenced FaceTime caller can leave a message only when Live Voicemail is on, and step 5 turns that off for the forward. They get nothing, which for a stranger is the point.
+
 ## What has not been tested
 
 Every branch of the call flow has an automated test ([test/flow.test.js](test/flow.test.js)), and the Plivo XML and callback fields were checked against Plivo's documentation. Nothing below has been checked on a real phone yet.
 
-- That each carrier forwards an unanswered call to the gate with the codes above, and what caller ID the forwarded call carries.
+- That each carrier forwards an unanswered call to the gate with the codes above, and what caller ID the forwarded call carries. On Verizon, whether a powered-off or out-of-range phone's calls reach the gate or Verizon's voicemail: no Verizon page says.
+- Whether a carrier spam app (Verizon Call Filter, AT&T ActiveArmor, T-Mobile Scam Block) or the iPhone's own spam filter takes a call before the forward fires.
 - That an iPhone set to **Silence** leaves the call for the carrier to forward.
 - Each carrier's no-answer time, and that `RING_SECONDS` below it prevents the loop.
 - That the press-1 screening works with the owner's carrier, and what happens when the owner's carrier voicemail answers instead.
