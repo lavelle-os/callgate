@@ -20,7 +20,7 @@ Plivo's Record page says recordings and transcripts are deleted after 30 days, a
 
 ## Caller ID is not proof
 
-The owner's phone rings for the saved gate number, and the whitelist passes saved numbers through. Both trust the caller ID the network presents, and caller ID can be spoofed. A spoofed gate number rings the owner directly. Only the code is independent of caller ID. Keep the gate number private and treat a leak like a leaked code.
+The owner's phone rings for the saved gate number, and the whitelist passes saved numbers through. Both trust the caller ID the network presents, and caller ID can be spoofed. A spoofed gate number rings the owner directly; the word the gate speaks on every bridged call is what tells a real gate call from a spoofed one (see the README section "Caller ID is not proof"). The code and the word are the two things independent of caller ID. Keep the gate number private and treat a leak like a leaked code.
 
 ## The gate code and Plivo's logs
 

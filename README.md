@@ -190,7 +190,7 @@ Anyone who learns your gate number can call it over and over, and every call cos
 
 Forwarding replaces your carrier voicemail. If the gate is down, unanswered calls go nowhere until you turn forwarding off. Keep the cancel code where you can find it:
 
-- Verizon `*73`. T-Mobile and AT&T `##004#`.
+- Verizon `*73`. T-Mobile `##004#`. AT&T `##61#`, `##62#`, `##67#` (the standard GSM cancel codes for the three forwards in the table; AT&T publishes no code of its own, so confirm with a test call).
 - A zero Plivo balance, an unpaid host, a changed `BASE_URL`, or a regenerated auth token each stops the gate.
 - If your own voicemail stopped working after setup, you forwarded all calls instead of unanswered ones. Dial the cancel code and redo step 4.
 - Make one test call a month from the second phone.
