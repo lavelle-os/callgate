@@ -122,8 +122,8 @@ function build(cfg, deps = {}) {
   const sendAlert = deps.sendAlert || defaultAlert(cfg);
   const limiter = deps.limiter || makeLimiter(cfg);
   const budget = deps.ringBudget || makeRingBudget(cfg);
-  const recent = new Map(); // RecordingID -> { from, link }
-  const seen = new Set(); // RecordingID + route, so a repeated callback sends one alert
+  const recent = new Map(); // RecordingID -> { from, link, ringAllowed }
+  const seen = new Set(); // RecordingID + route, so a repeated callback spends nothing and sends one alert
   const keysLogged = new Set();
   let lastWarn = 0;
   let capAlertAt = 0;
@@ -277,25 +277,41 @@ function build(cfg, deps = {}) {
     return xml(res, flow.dialStatus(f, cfg));
   });
 
-  // The recording is finished (action URL) or ready (callbackUrl). Both land here. The ring
-  // decision and the alert come from the same classification, so they cannot disagree.
+  // Two requests arrive per recording, in either order: the action (the recording stopped),
+  // which decides the ring and the alert, and the "file ready" callback (ready=1 in its signed
+  // URL), which only adds the link. A repeated action gets the same answer and changes nothing,
+  // so the repeat check comes before any budget is spent or any alert is sent.
   app.post('/recorded', signed, async (req, res) => {
     const f = fields(req);
     logCall('recorded', f);
     const ctx = flow.context(f);
     const from = ctx.from || flow.normalize(f.From) || 'unknown caller';
+    const id = field(f, 'RecordingID', 'recording_id') || field(f, 'CallUUID');
+    const before = (id && recent.get(id)) || {};
+    const link = field(f, 'RecordUrl', 'recording_url') || before.link || '';
+    const remember = (entry) => {
+      if (!id) return;
+      recent.delete(id);
+      recent.set(id, { ...before, from: before.from || from, link, ...entry });
+      if (recent.size > RECENT_LIMIT) recent.delete(recent.keys().next().value);
+    };
+
+    if (req.query.ready) {
+      remember({});
+      return res.sendStatus(200);
+    }
+
+    const repeat = !!id && seen.has('r:' + id);
     const r = flow.classifyRecording(f, cfg);
     const willRing = r.silent && !ctx.held;
-    const ringAllowed = willRing ? budget.allow('silent', ctx.from) : true;
+    let ringAllowed = true;
+    if (repeat) ringAllowed = before.ringAllowed === true;
+    else if (willRing) ringAllowed = budget.allow('silent', ctx.from);
     const out = flow.recorded(f, cfg, { ringAllowed });
+    if (repeat) return xml(res, out);
 
-    const id = field(f, 'RecordingID', 'recording_id') || field(f, 'CallUUID');
-    const link = field(f, 'RecordUrl', 'recording_url');
-    let first = true;
     if (id) {
-      recent.set(id, { from, link });
-      if (recent.size > RECENT_LIMIT) recent.delete(recent.keys().next().value);
-      first = !seen.has('r:' + id);
+      remember({ ringAllowed });
       seen.add('r:' + id);
       if (seen.size > RECENT_LIMIT * 4) seen.delete(seen.values().next().value);
     }
@@ -305,7 +321,6 @@ function build(cfg, deps = {}) {
       return xml(res, out);
     }
     xml(res, out);
-    if (!first) return;
     if (r.silent && ctx.held) sendAlert('Silent caller', `${from} waited on the line without speaking, twice. Ended.`);
     else if (r.silent) budgetAlert();
     else sendAlert(`Voicemail from ${from}`, `${r.ms ? Math.round(r.ms / 1000) + ' seconds. ' : ''}${link || '(no recording link)'}`);

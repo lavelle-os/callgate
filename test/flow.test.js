@@ -191,7 +191,7 @@ test('an unknown caller who presses nothing is offered voicemail with the record
   const afterPrompt = x.split('</GetInput>')[1];
   assert.match(afterPrompt, /recorded and transcribed/);
   assert.match(afterPrompt, /<Record action="https:\/\/gate.example.com\/recorded\?from=3125550123"/);
-  assert.match(afterPrompt, /callbackUrl="https:\/\/gate.example.com\/recorded\?from=3125550123"/);
+  assert.match(afterPrompt, /callbackUrl="https:\/\/gate.example.com\/recorded\?from=3125550123&amp;ready=1"/);
   assert.match(afterPrompt, /timeout="10" playBeep="true"/);
   assert.match(afterPrompt, /transcriptionUrl="https:\/\/gate.example.com\/transcribed\?from=3125550123"/);
 });
@@ -493,6 +493,46 @@ test('server: over the ring budget, callers get voicemail and the owner gets one
     assert.match(await (await post(`${origin}/recorded?from=3125550125`, 'RecordingID=s2&RecordingDurationMs=10500')).text(), /could not reach them/, 'one silent ring per number per day');
   });
   assert.deepStrictEqual(silentTwice, ['Ringing you', 'Ring budget reached']);
+});
+
+test('server: a silent call\'s two recording requests, in either order, spend one ring and send one alert; a repeat changes nothing', async () => {
+  const action = 'RecordingID=s7&RecordUrl=https://media.example.com/s7.mp3&RecordingDurationMs=10500';
+  // The "file ready" callback carries no keys and no call status, so on its own it looks silent.
+  const ready = 'RecordingID=s7&RecordUrl=https://media.example.com/s7.mp3&RecordingDurationMs=10500';
+  for (const silentRingsPerDay of [1, 2]) {
+    for (const order of ['action first', 'ready first']) {
+      const alerts = [];
+      const budget = makeRingBudget({ ringsPerHour: 100, silentRingsPerDay });
+      const sendAlert = async (title) => alerts.push(title);
+      await withServer({ ...cfg, silentRingsPerDay }, { sendAlert, ringBudget: budget }, async (origin) => {
+        const sendReady = async () => {
+          const r = await post(`${origin}/recorded?from=3125550125&ready=1`, ready);
+          assert.strictEqual(r.status, 200);
+          assert.doesNotMatch(await r.text(), /<Dial /, 'the ready callback never rings');
+        };
+        if (order === 'ready first') await sendReady();
+        const first = await (await post(`${origin}/recorded?from=3125550125`, action)).text();
+        assert.match(first, /<Dial /, `${order}: the caller who waited is rung`);
+        if (order === 'action first') await sendReady();
+        const again = await (await post(`${origin}/recorded?from=3125550125`, action)).text();
+        assert.strictEqual(again, first, `${order}: a repeated action gets the same answer`);
+        await sendReady();
+        assert.strictEqual(budget.count(), 1, `${order}, ${silentRingsPerDay} a day: one ring spent`);
+      });
+      assert.deepStrictEqual(alerts, ['Ringing you'], `${order}, ${silentRingsPerDay} a day: one alert`);
+    }
+  }
+});
+
+test('server: a voicemail\'s two recording requests send one alert, with the link from either', async () => {
+  const alerts = [];
+  const sendAlert = async (title, body) => alerts.push(title + ' | ' + body);
+  await withServer(cfg, { sendAlert }, async (origin) => {
+    await post(`${origin}/recorded?from=3125550123&ready=1`, 'RecordingID=v1&RecordUrl=https://media.example.com/v1.mp3&RecordingDurationMs=34000');
+    assert.match(await (await post(`${origin}/recorded?from=3125550123`, 'RecordingID=v1&RecordingDurationMs=34000')).text(), /Thank you\. Goodbye\./);
+    await post(`${origin}/recorded?from=3125550123`, 'RecordingID=v1&RecordingDurationMs=34000');
+  });
+  assert.deepStrictEqual(alerts, ['Voicemail from 3125550123 | 34 seconds. https://media.example.com/v1.mp3']);
 });
 
 test('server: the front page names the answer URL and never a secret', async () => {

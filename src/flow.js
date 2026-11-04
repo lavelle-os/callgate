@@ -44,6 +44,7 @@ function url(cfg, pathname, ctx) {
   const q = [];
   if (ctx && ctx.from) q.push('from=' + ctx.from);
   if (ctx && ctx.held) q.push('held=' + ctx.held);
+  if (ctx && ctx.ready) q.push('ready=1');
   return escapeXml(cfg.baseUrl + pathname + (q.length ? '?' + q.join('&') : ''));
 }
 
@@ -95,11 +96,13 @@ function voicemail(cfg, ctx, lead) {
     intro +
     speak('Your message will be recorded and transcribed. Please speak after the tone, or stay on the line.', cfg.voice) +
     `<Record action="${url(cfg, '/recorded', ctx)}" method="POST" ` +
-    `callbackUrl="${url(cfg, '/recorded', ctx)}" callbackMethod="POST" ` +
+    // The "file ready" callback carries ready=1, so the server never mistakes it for the end
+    // of the recording: it carries no keys pressed and no call status, so it can look silent.
+    `callbackUrl="${url(cfg, '/recorded', { ...ctx, ready: 1 })}" callbackMethod="POST" ` +
     `maxLength="${cfg.maxMessageSeconds}" timeout="${cfg.silenceSeconds}" playBeep="true" finishOnKey="#" ` +
     `transcriptionType="auto" transcriptionUrl="${url(cfg, '/transcribed', ctx)}" ` +
     `transcriptionMethod="POST" redirect="true"/>`
-    // After the recording Plivo fetches /recorded, which decides what happens next.
+    // After the recording Plivo fetches /recorded (the action), which decides what happens next.
   );
 }
 
