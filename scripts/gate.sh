@@ -26,7 +26,7 @@ else
   echo "gate: note, gitleaks not installed (brew install gitleaks); regex fallback only"
 fi
 
-PATTERN='(\(?[0-9]{3}\)?[-. ]?[0-9]{3}[-. ]?[0-9]{4})|/Users/[A-Za-z]+|/home/[A-Za-z]+|[a-z0-9][a-z0-9-]*\.local\b|~/\.[a-z]+|C:\\Users\\|AKIA[0-9A-Z]{16}|xox[baprs]-|-----BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9]{10,}|ghp_[A-Za-z0-9]{10,}|github_pat_|ck_[a-f0-9]{20,}|cs_[a-f0-9]{20,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}|api[_-]?key *[:=]|password *[:=]|[0-9]{1,5} [A-Z][a-z]+ (Dr|Drive|Rd|Road|St|Street|Ln|Lane|Ave|Avenue|Trail|Trce|Pkwy|Ct|Court|Way|Cir|Circle|Pike|Blvd|Hwy|Highway)\b|\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b'
+PATTERN='(\(?[0-9]{3}\)?[-. ]?[0-9]{3}[-. ]?[0-9]{4})|/Users/[A-Za-z]+|/home/[A-Za-z]+|[a-z0-9][a-z0-9-]*\.local\b|~/\.[a-z]+|\$HOME/\.[a-z]+|~[a-z]+/\.[a-z]+|C:\\Users\\|AKIA[0-9A-Z]{16}|xox[baprs]-|-----BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9]{10,}|ghp_[A-Za-z0-9]{10,}|github_pat_|ck_[a-f0-9]{20,}|cs_[a-f0-9]{20,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}|api[_-]?key *[:=]|password *[:=]|[0-9]{1,5} [A-Z][a-z]+ (Dr|Drive|Rd|Road|St|Street|Ln|Lane|Ave|Avenue|Trail|Trce|Pkwy|Ct|Court|Way|Cir|Circle|Pike|Blvd|Hwy|Highway)\b|\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b'
 NAMES_FILE="$(dirname "$0")/.gate-names"   # private, gitignored: one term per line
 # 3) Roadmap language. The public repo is a snapshot of practice, not a roadmap (owner's rule, 2026-09-06).
 #    Chapters and the README say how to run it today and nothing about where it is going. Blocks, not warns:
@@ -38,12 +38,19 @@ for f in $FILES; do
   # 555-01xx numbers are reserved for fiction (NANPA) and are the only phone numbers allowed in examples and tests.
   # They are removed (with any +1 / 1 prefix) before the pattern runs, so a real number beside one is still caught.
   FICTION='(\+?1[-. ]?)?\(?[0-9]{3}\)?[-. ]?555[-. ]?01[0-9]{2}'
-  # The standard folders coding agents read (Claude Code's ~/.claude, OpenCode's ~/.agents, Codex's ~/.codex, Grok Build's ~/.grok, and ~/.local/bin where installers put them) are
-  # teaching text: the setup pages have to name them. They are removed before the pattern runs, the same way as the
-  # fiction numbers, so any other ~/.dotfolder (a personal one) is still blocked. Added 2026-11-04 when this copy
-  # became canonical and the skills repo's setup pages would otherwise fail it.
-  AGENTDIRS='~/\.(claude|agents|codex|grok|local)([^A-Za-z0-9_]|$)'   # no \b: macOS sed has none
-  if git show ":$f" | sed -E "s/$FICTION//g; s#$AGENTDIRS#\2#g" | grep -nEi "$PATTERN" >/dev/null; then echo "gate: BLOCKED pattern in $f"; git show ":$f" | sed -E "s/$FICTION//g; s#$AGENTDIRS#\2#g" | grep -nEi "$PATTERN" | head -3; fail=1; fi
+  # The standard folders coding agents read are teaching text: the setup pages have to name them. Only these exact
+  # forms are removed before the pattern runs, the same way as the fiction numbers:
+  #   ~/.claude  ~/.agents  ~/.codex  ~/.grok   alone, or followed by /CLAUDE.md /AGENTS.md /settings.json
+  #                                             /config.toml or /skills (and a skill folder name under it)
+  #   ~/.local/bin                              and one program name under it
+  # (also written $HOME/ instead of ~/). Anything else in those folders (~/.codex/auth.json, ~/.grok/sessions/...)
+  # and any look-alike (~/.claude-marc, ~/.claude.json, ~/.local.bak) is still blocked, as is every other ~/.dotfolder.
+  # Added 2026-11-04 when this copy became canonical; narrowed the same day after an outside review showed
+  # the first version let ~/.claude-marc/notes and ~/.codex/auth.json through.
+  # No \b anywhere: macOS sed has none. The last group is the character after the path, put back by \6 or \3.
+  AGENTDIRS='(~|\$HOME)/\.(claude|agents|codex|grok)(/(CLAUDE\.md|AGENTS\.md|settings\.json|config\.toml|skills(/[A-Za-z0-9$_-]+)*)?)?/?([] ,:;)`"*]|$)'
+  LOCALBIN='(~|\$HOME)/\.local/bin(/[A-Za-z0-9_-]*)?([] ,:;)`"*]|$)'
+  if git show ":$f" | sed -E "s/$FICTION//g; s#$AGENTDIRS#\6#g; s#$LOCALBIN#\3#g" | grep -nEi "$PATTERN" >/dev/null; then echo "gate: BLOCKED pattern in $f"; git show ":$f" | sed -E "s/$FICTION//g; s#$AGENTDIRS#\6#g; s#$LOCALBIN#\3#g" | grep -nEi "$PATTERN" | head -3; fail=1; fi
   if [ -f "$NAMES_FILE" ] && git show ":$f" | grep -nFi -f "$NAMES_FILE" >/dev/null; then echo "gate: BLOCKED private name in $f"; fail=1; fi
   # EVERY shippable path, not just docs/ and README.md. On 2026-09-14 an outside
   # audit found that the file with the most roadmap language in it was the
