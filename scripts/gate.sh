@@ -38,7 +38,12 @@ for f in $FILES; do
   # 555-01xx numbers are reserved for fiction (NANPA) and are the only phone numbers allowed in examples and tests.
   # They are removed (with any +1 / 1 prefix) before the pattern runs, so a real number beside one is still caught.
   FICTION='(\+?1[-. ]?)?\(?[0-9]{3}\)?[-. ]?555[-. ]?01[0-9]{2}'
-  if git show ":$f" | sed -E "s/$FICTION//g" | grep -nEi "$PATTERN" >/dev/null; then echo "gate: BLOCKED pattern in $f"; git show ":$f" | sed -E "s/$FICTION//g" | grep -nEi "$PATTERN" | head -3; fail=1; fi
+  # The standard folders coding agents read (Claude Code's ~/.claude, OpenCode's ~/.agents, Codex's ~/.codex, Grok Build's ~/.grok, and ~/.local/bin where installers put them) are
+  # teaching text: the setup pages have to name them. They are removed before the pattern runs, the same way as the
+  # fiction numbers, so any other ~/.dotfolder (a personal one) is still blocked. Added 2026-11-04 when this copy
+  # became canonical and the skills repo's setup pages would otherwise fail it.
+  AGENTDIRS='~/\.(claude|agents|codex|grok|local)([^A-Za-z0-9_]|$)'   # no \b: macOS sed has none
+  if git show ":$f" | sed -E "s/$FICTION//g; s#$AGENTDIRS#\2#g" | grep -nEi "$PATTERN" >/dev/null; then echo "gate: BLOCKED pattern in $f"; git show ":$f" | sed -E "s/$FICTION//g; s#$AGENTDIRS#\2#g" | grep -nEi "$PATTERN" | head -3; fail=1; fi
   if [ -f "$NAMES_FILE" ] && git show ":$f" | grep -nFi -f "$NAMES_FILE" >/dev/null; then echo "gate: BLOCKED private name in $f"; fail=1; fi
   # EVERY shippable path, not just docs/ and README.md. On 2026-09-14 an outside
   # audit found that the file with the most roadmap language in it was the
