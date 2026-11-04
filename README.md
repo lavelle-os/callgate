@@ -235,8 +235,8 @@ Every branch of the call flow has an automated test ([test/flow.test.js](test/fl
 - Each carrier's no-answer time, and that `RING_SECONDS` below it prevents the loop.
 - That the press-1 screening works with the owner's carrier, and what happens when the owner's carrier voicemail answers instead.
 - That a bridged call shown as the gate number is not labeled spam.
-- That Plivo calls `/recorded` when the caller hangs up instead of pressing #.
-- Which of a recording's two requests (the recording stopped, the file is ready) Plivo sends first. The server handles either order, and only the first decides the ring.
+- That Plivo calls `/recorded` when the caller hangs up instead of pressing #. If it does not, the file-ready request sends the voicemail alert a minute later, without ringing you.
+- Which of a recording's two requests (the recording stopped, the file is ready) Plivo sends first. The server handles either order. Only the recording-stopped request decides the ring.
 - That the fallback XML is accepted from the host you choose.
 - That the word in the confirm prompt is heard on a bridged call before the press-1 prompt, and that the owner's carrier voicemail cannot take the call.
 - What `RecordingDurationMs` Plivo reports for an all-silent recording and for a noisy room. The silence test assumes 0 or the length of the silence window.
