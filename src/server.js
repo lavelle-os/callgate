@@ -122,6 +122,7 @@ function build(cfg, deps = {}) {
   const sendAlert = deps.sendAlert || defaultAlert(cfg);
   const limiter = deps.limiter || makeLimiter(cfg);
   const budget = deps.ringBudget || makeRingBudget(cfg);
+  const readyWaitMs = deps.readyWaitMs || 60000; // how long the backstop waits for the action
   const recent = new Map(); // RecordingID -> { from, link, ringAllowed }
   const seen = new Set(); // RecordingID + route, so a repeated callback spends nothing and sends one alert
   const keysLogged = new Set();
@@ -298,7 +299,26 @@ function build(cfg, deps = {}) {
 
     if (req.query.ready) {
       remember({});
-      return res.sendStatus(200);
+      res.sendStatus(200);
+      // Backstop. Whether Plivo sends the action when a caller hangs up instead of pressing #
+      // is untested (README, "What has not been tested"). If the action has not arrived a minute
+      // after the file is ready, send the voicemail alert from here, so a message is never silent.
+      // Nothing rings and no budget is spent. A late action after this counts as a repeat.
+      if (id && !seen.has('r:' + id) && !seen.has('b:' + id)) {
+        seen.add('b:' + id);
+        const ms = Number(field(f, 'RecordingDurationMs', 'recording_duration_ms')) ||
+          1000 * Number(field(f, 'RecordingDuration', 'recording_duration')) || 0;
+        const timer = setTimeout(() => {
+          if (seen.has('r:' + id)) return;
+          seen.add('r:' + id);
+          const known = recent.get(id) || {};
+          sendAlert(`Voicemail from ${known.from || from}`,
+            `${ms ? Math.round(ms / 1000) + ' seconds. ' : ''}${known.link || link || '(no recording link)'}` +
+            ' (sent from the recording-ready request; the end-of-recording request never came)');
+        }, readyWaitMs);
+        if (timer.unref) timer.unref();
+      }
+      return;
     }
 
     const repeat = !!id && seen.has('r:' + id);

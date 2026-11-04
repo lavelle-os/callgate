@@ -535,6 +535,33 @@ test('server: a voicemail\'s two recording requests send one alert, with the lin
   assert.deepStrictEqual(alerts, ['Voicemail from 3125550123 | 34 seconds. https://media.example.com/v1.mp3']);
 });
 
+test('server: if the end-of-recording request never comes, the ready request still sends one voicemail alert and rings nothing', async () => {
+  const alerts = [];
+  const budget = makeRingBudget({ ringsPerHour: 100, silentRingsPerDay: 2 });
+  const sendAlert = async (title, body) => alerts.push(title + ' | ' + body);
+  await withServer(cfg, { sendAlert, ringBudget: budget, readyWaitMs: 30 }, async (origin) => {
+    const r = await post(`${origin}/recorded?from=3125550123&ready=1`, 'RecordingID=h1&RecordUrl=https://media.example.com/h1.mp3&RecordingDurationMs=21000');
+    assert.strictEqual(r.status, 200);
+    await post(`${origin}/recorded?from=3125550123&ready=1`, 'RecordingID=h1&RecordUrl=https://media.example.com/h1.mp3&RecordingDurationMs=21000');
+    await new Promise((done) => setTimeout(done, 80));
+    // A late action after the backstop is a repeat: no second alert, no ring.
+    assert.doesNotMatch(await (await post(`${origin}/recorded?from=3125550123`, 'RecordingID=h1&RecordingDurationMs=21000')).text(), /<Dial /);
+  });
+  assert.strictEqual(budget.count(), 0, 'no ring spent');
+  assert.deepStrictEqual(alerts, ['Voicemail from 3125550123 | 21 seconds. https://media.example.com/h1.mp3 (sent from the recording-ready request; the end-of-recording request never came)']);
+});
+
+test('server: when the end-of-recording request does come, the backstop stays quiet', async () => {
+  const alerts = [];
+  const sendAlert = async (title) => alerts.push(title);
+  await withServer(cfg, { sendAlert, readyWaitMs: 30 }, async (origin) => {
+    await post(`${origin}/recorded?from=3125550123&ready=1`, 'RecordingID=h2&RecordUrl=https://media.example.com/h2.mp3&RecordingDurationMs=34000');
+    await post(`${origin}/recorded?from=3125550123`, 'RecordingID=h2&RecordingDurationMs=34000');
+    await new Promise((done) => setTimeout(done, 80));
+  });
+  assert.deepStrictEqual(alerts, ['Voicemail from 3125550123']);
+});
+
 test('server: the front page names the answer URL and never a secret', async () => {
   await withServer({ ...cfg, authToken: 'secret-token' }, {}, async (origin) => {
     const r = await fetch(origin + '/');
