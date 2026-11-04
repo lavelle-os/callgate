@@ -353,7 +353,7 @@ function build(cfg, deps = {}) {
   // Plain-text errors, no stack traces to strangers.
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    console.error('[error]', err.message);
+    console.error('[error]', mask(String(err.message)));
     res.status(err.status || 500).type('text').send('callgate error');
   });
 
