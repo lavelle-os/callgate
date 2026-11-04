@@ -75,7 +75,7 @@ On Railway: **New Project → Deploy from GitHub repo**, pick your copy of this 
 |---|---|
 | `OWNER_PHONE` | your real cell number, 10 digits |
 | `SERVICE_NUMBER` | the Plivo number from step 1, 10 digits |
-| `GATE_CODE` | 4 to 8 digits you will give to people who should reach you; not a run or a repeat |
+| `GATE_CODE` | 6 to 8 digits you will give to people who should reach you; not a run or a repeat |
 | `OWNER_WORD` | one or two plain words the gate says to you, and only you, when it rings you. Not a word you use anywhere else |
 | `BASE_URL` | the `https://` address from Railway, no slash at the end |
 | `PLIVO_AUTH_TOKEN` | Plivo console overview page: the **Auth Token**, not the Auth ID. If the number sits in a subaccount, that subaccount's token |

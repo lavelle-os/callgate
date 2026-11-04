@@ -15,7 +15,13 @@ function e164(digits) {
   return '+1' + digits;
 }
 
-const WEAK_CODES = new Set(['1234', '4321', '0123', '12345', '54321', '123456', '654321', '1234567', '12345678', '87654321']);
+// Too easy to guess: one digit or a short block repeated (111111, 000000, 121212, 123123), or a
+// straight run up or down (123456, 654321, 890123).
+function easyCode(code) {
+  if (/^(\d{1,4})\1+$/.test(code)) return true;
+  const d = [...code].map(Number);
+  return [1, 9].some((step) => d.every((x, i) => i === 0 || x === (d[i - 1] + step) % 10));
+}
 
 // One whitelist entry: a number, an optional label after "=", and an optional "!" at the end
 // for callers that cannot press a key (a pharmacy's automated call, an alarm company), who ring
@@ -79,9 +85,10 @@ function load(env = process.env) {
 
   const code = String(env.GATE_CODE || '').trim();
   if (!testing || code) {
-    if (!/^\d{4,8}$/.test(code)) throw new Error('GATE_CODE must be 4 to 8 digits.');
-    if (!testing && (WEAK_CODES.has(code) || /^(\d)\1+$/.test(code))) {
-      throw new Error('GATE_CODE is too easy to guess. Pick 4 to 8 digits that are not a run or a repeat.');
+    // Six digits at least: one guess per call, so the call caps are what slow a guesser down.
+    if (!/^\d{6,8}$/.test(code)) throw new Error('GATE_CODE must be 6 to 8 digits.');
+    if (!testing && easyCode(code)) {
+      throw new Error('GATE_CODE is too easy to guess. Pick 6 to 8 digits that are not a run or a repeat.');
     }
   }
 
