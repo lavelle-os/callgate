@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const crypto = require('node:crypto');
 const flow = require('../src/flow');
 const { load, normalize, parseWhitelistEntry } = require('../src/config');
-const { build, makeLimiter, makeRingBudget, asciiTitle, clean } = require('../src/server');
+const { build, makeLimiter, makeRingBudget, asciiTitle, clean, mask } = require('../src/server');
 
 const cfg = {
   ownerPhone: '2055550100',
@@ -472,6 +472,43 @@ test('server: a ring alert that hangs or fails does not stop the ring (fail open
     const r = await post(`${origin}/gate?from=3125550123`, 'Digits=4321');
     assert.match(await r.text(), /<Dial /);
   });
+});
+
+test('logs: a full caller number never appears in a log line, on any route; alerts keep the full number', async () => {
+  assert.strictEqual(mask('+1 (312) 555-0123'), '***-***-0123');
+  assert.strictEqual(mask('WIRELESS 13125550123'), 'WIRELESS ***-***-0123');
+  assert.strictEqual(mask('10500'), '10500', 'short values such as durations are left alone');
+  const lines = [];
+  const alerts = [];
+  const saved = { log: console.log, warn: console.warn, error: console.error };
+  for (const k of Object.keys(saved)) console[k] = (...a) => lines.push(a.join(' '));
+  try {
+    const sendAlert = async (title, body) => alerts.push(title + ' | ' + body);
+    const caller = 'From=%2B13125550123&To=%2B12055550199&ForwardedFrom=%2B12055550100&CallerName=%2B1+312+555+0123&CallUUID=c1';
+    await withServer({ ...cfg, callsPerHourPerCaller: 1 }, { sendAlert }, async (origin) => {
+      await post(`${origin}/answer`, caller);
+      await post(`${origin}/answer`, caller);
+      await post(`${origin}/answer`, 'From=12055550111&CallerName=Mom+2055550111');
+      await post(`${origin}/whitelist-ok?from=2055550111`, 'Digits=7&From=%2B12055550111');
+      await post(`${origin}/gate?from=3125550123`, 'Digits=9999&From=%2B13125550123');
+      await post(`${origin}/gate?from=3125550123`, 'Digits=4321&From=%2B13125550123');
+      await post(`${origin}/dial-status?from=3125550123`, 'DialStatus=no-answer&From=%2B13125550123');
+      await post(`${origin}/recorded?from=3125550123`, 'RecordingID=m1&RecordingDurationMs=34000&From=%2B13125550123');
+      await post(`${origin}/transcribed?from=3125550123`, 'recording_id=m1&transcription=Call+me+back');
+      await post(`${origin}/hangup`, 'CallUUID=c1&From=%2B13125550123&HangupCause=NORMAL_CLEARING');
+    });
+    const signedCfg = { ...cfg, authToken: 'secret-token', checkSignatures: true };
+    await withServer(signedCfg, {}, async (origin) => {
+      assert.strictEqual((await post(`${origin}/recorded?from=3125550123`, 'From=%2B13125550123')).status, 403);
+    });
+  } finally {
+    Object.assign(console, saved);
+  }
+  assert.ok(lines.some((l) => l.startsWith('[signature]')), 'the signature warning was logged');
+  assert.ok(lines.some((l) => l.startsWith('[cap]')) && lines.some((l) => l.startsWith('[gate] wrong')) && lines.some((l) => l.startsWith('[gate] right')));
+  for (const l of lines) assert.doesNotMatch(l, /(\d[ ().+-]*){7}/, `a log line carries a full number: ${l}`);
+  assert.ok(lines.some((l) => l.includes('***-***-0123')), 'the last four digits are logged');
+  assert.ok(alerts.includes('Wrong code | 3125550123 tried a wrong code.'), 'alerts are unchanged');
 });
 
 test('server: over the ring budget, callers get voicemail and the owner gets one alert an hour', async () => {
