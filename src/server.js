@@ -24,15 +24,28 @@ function clean(text, max = 80) {
   return String(text).replace(/[^\x20-\x7e]/g, '').slice(0, max);
 }
 
+// Phone numbers in log lines show the last four digits only (***-***-0123), because the host
+// keeps its logs. Alerts and the in-memory records keep the full number.
+function mask(text) {
+  return String(text).replace(/\+?\(?\d[\d ().-]{5,}\d/g, (m) => {
+    const digits = m.replace(/\D/g, '');
+    return digits.length >= 7 ? '***-***-' + digits.slice(-4) : m;
+  });
+}
+
 function asciiTitle(text) {
   return clean(text, 120) || 'callgate';
 }
 
-// One line per webhook with the fields the first live tests need. Never the digits typed.
+// One line per webhook with the fields the first live tests need. Never the digits typed, and
+// every value but the IDs masked. The caller ID name is a person's name more often than a
+// number, so the log says only whether one came, never what it was.
+const LOG_IDS = new Set(['CallUUID', 'RecordingID', 'call_uuid', 'recording_id']);
 function logCall(route, b) {
   const keep = ['CallUUID', 'From', 'To', 'ForwardedFrom', 'CallerName', 'CallStatus', 'Direction', 'StirVerification', 'STIRVerification', 'StirAttestation', 'STIRAttestation', 'DialStatus', 'DialHangupCause', 'DialRingStatus', 'HangupCause', 'HangupSource', 'RecordingID', 'RecordingDurationMs', 'call_uuid', 'recording_id', 'error'];
   const out = {};
-  for (const k of keep) if (b[k] !== undefined) out[k] = clean(b[k]);
+  for (const k of keep) if (b[k] !== undefined) out[k] = LOG_IDS.has(k) ? clean(b[k]) : mask(clean(b[k]));
+  if (out.CallerName !== undefined) out.CallerName = out.CallerName ? '(withheld)' : '';
   console.log(`[call] ${route} ${JSON.stringify(out)}`);
 }
 
@@ -151,7 +164,7 @@ function build(cfg, deps = {}) {
       const now = Date.now();
       if (now - lastWarn > 60000) {
         lastWarn = now;
-        console.warn(`[signature] rejected ${req.method} ${req.path}. The server compared against ${fullUrl}. If this is Plivo, BASE_URL must match the console answer URL exactly, and the token must be the one for the account or subaccount that owns the number.`);
+        console.warn(`[signature] rejected ${req.method} ${req.path}. The server compared against ${cfg.baseUrl + mask(req.originalUrl)}. If this is Plivo, BASE_URL must match the console answer URL exactly, and the token must be the one for the account or subaccount that owns the number.`);
       }
       return res.status(403).type('text').send('Signature check failed');
     }
@@ -227,7 +240,7 @@ function build(cfg, deps = {}) {
     if (from && from === cfg.serviceNumber) return xml(res, flow.answer(f, cfg));
     const known = flow.whitelistEntry(cfg, from);
     if (!limiter.allow(from, Date.now(), { skipGlobal: !!known })) {
-      console.warn(`[cap] call refused, hourly cap reached (${from ? 'caller ' + from : 'unknown caller'})`);
+      console.warn(`[cap] call refused, hourly cap reached (${from ? 'caller ' + mask(from) : 'unknown caller'})`);
       capAlert();
       return xml(res, flow.overCap(cfg));
     }
@@ -260,13 +273,13 @@ function build(cfg, deps = {}) {
     const from = flow.context(f).from;
     const willRing = !!cfg.code && digits === cfg.code;
     if (digits && digits !== '1' && !willRing) {
-      console.warn(`[gate] wrong code from ${from || 'unknown caller'}`);
+      console.warn(`[gate] wrong code from ${from ? mask(from) : 'unknown caller'}`);
       if (cfg.alertOnCode) sendAlert('Wrong code', `${from || 'unknown caller'} tried a wrong code.`);
     }
     const ringAllowed = willRing ? budget.allow('code', from) : true;
     const out = flow.gate(f, cfg, { ringAllowed });
     if (flow.rings(out)) {
-      console.log(`[gate] right code from ${from || 'unknown caller'}`);
+      console.log(`[gate] right code from ${from ? mask(from) : 'unknown caller'}`);
       await ringAlert(`${from || 'unknown caller'} entered the code.`);
     } else if (willRing && !ringAllowed) budgetAlert();
     return xml(res, out);
@@ -377,7 +390,7 @@ function build(cfg, deps = {}) {
   // Plain-text errors, no stack traces to strangers.
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    console.error('[error]', err.message);
+    console.error('[error]', mask(String(err.message)));
     res.status(err.status || 500).type('text').send('callgate error');
   });
 
@@ -396,4 +409,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { build, field, makeLimiter, makeRingBudget, asciiTitle, clean };
+module.exports = { build, field, makeLimiter, makeRingBudget, asciiTitle, clean, mask };
