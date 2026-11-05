@@ -28,6 +28,20 @@ jobs:
           mv gitleaks "$HOME/.local/bin/"
       - name: Safety gate
         run: bash scripts/gate.sh --all
+      - name: The gate still blocks (one known-bad line per check, on this runner's sed and grep)
+        # A gate that errors or matches nothing looks the same as a clean one. Each line below is built from
+        # pieces so this file passes the gate itself; each must be BLOCKED, or this step fails.
+        run: |
+          bad=0
+          for line in "call 205-867-53""09" "open /Us""ers/someone/x" "see ~""/.claude-old/notes" "read ~""/.codex/auth.json" "write someone@""gmail.com" "the end go""al"; do
+            printf '%s\n' "$line" > gate-selftest.md
+            git add gate-selftest.md
+            if bash scripts/gate.sh >/dev/null 2>&1; then echo "NOT BLOCKED: $line"; bad=1; else echo "blocked: $line"; fi
+            git rm -q --cached gate-selftest.md
+          done
+          rm -f gate-selftest.md
+          if bash scripts/gate.sh --al >/dev/null 2>&1; then echo "NOT REFUSED: a mistyped argument"; bad=1; fi
+          exit $bad
       - uses: actions/setup-node@v5
         with:
           node-version-file: .node-version
