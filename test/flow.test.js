@@ -489,6 +489,7 @@ test('logs: a full caller number never appears in a log line, on any route; aler
       await post(`${origin}/answer`, caller);
       await post(`${origin}/answer`, caller);
       await post(`${origin}/answer`, 'From=12055550111&CallerName=Mom+2055550111');
+      await post(`${origin}/answer`, 'From=%2B13125550177&CallerName=JANE+EXAMPLE&CallUUID=c2');
       await post(`${origin}/whitelist-ok?from=2055550111`, 'Digits=7&From=%2B12055550111');
       await post(`${origin}/gate?from=3125550123`, 'Digits=9999&From=%2B13125550123');
       await post(`${origin}/gate?from=3125550123`, 'Digits=4321&From=%2B13125550123');
@@ -508,6 +509,8 @@ test('logs: a full caller number never appears in a log line, on any route; aler
   assert.ok(lines.some((l) => l.startsWith('[cap]')) && lines.some((l) => l.startsWith('[gate] wrong')) && lines.some((l) => l.startsWith('[gate] right')));
   for (const l of lines) assert.doesNotMatch(l, /(\d[ ().+-]*){7}/, `a log line carries a full number: ${l}`);
   assert.ok(lines.some((l) => l.includes('***-***-0123')), 'the last four digits are logged');
+  for (const l of lines) assert.doesNotMatch(l, /JANE|\bMom\b/, `a log line carries a caller ID name: ${l}`);
+  assert.ok(lines.some((l) => l.includes('"CallerName":"(withheld)"')), 'the log says a caller ID name came');
   assert.ok(alerts.includes('Wrong code | 3125550123 tried a wrong code.'), 'alerts are unchanged');
 });
 

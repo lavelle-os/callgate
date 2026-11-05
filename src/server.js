@@ -38,12 +38,14 @@ function asciiTitle(text) {
 }
 
 // One line per webhook with the fields the first live tests need. Never the digits typed, and
-// every value but the IDs masked, so a number in the caller ID name is masked too.
+// every value but the IDs masked. The caller ID name is a person's name more often than a
+// number, so the log says only whether one came, never what it was.
 const LOG_IDS = new Set(['CallUUID', 'RecordingID', 'call_uuid', 'recording_id']);
 function logCall(route, b) {
   const keep = ['CallUUID', 'From', 'To', 'ForwardedFrom', 'CallerName', 'CallStatus', 'Direction', 'StirVerification', 'STIRVerification', 'StirAttestation', 'STIRAttestation', 'DialStatus', 'DialHangupCause', 'DialRingStatus', 'HangupCause', 'HangupSource', 'RecordingID', 'RecordingDurationMs', 'call_uuid', 'recording_id', 'error'];
   const out = {};
   for (const k of keep) if (b[k] !== undefined) out[k] = LOG_IDS.has(k) ? clean(b[k]) : mask(clean(b[k]));
+  if (out.CallerName !== undefined) out.CallerName = out.CallerName ? '(withheld)' : '';
   console.log(`[call] ${route} ${JSON.stringify(out)}`);
 }
 
