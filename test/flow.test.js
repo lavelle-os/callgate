@@ -48,7 +48,7 @@ const PROD = {
   SERVICE_NUMBER: '2055550199',
   BASE_URL: 'https://gate.example.com',
   PLIVO_AUTH_TOKEN: 'tok',
-  GATE_CODE: '8305',
+  GATE_CODE: '830571',
   OWNER_WORD: 'pelican',
   NTFY_URL: 'https://ntfy.sh/9f1c2b7e4d8a6c0b1e2f3a4b5c6d7e8f',
 };
@@ -68,7 +68,7 @@ test('numbers in different formats match, and 11-digit forms drop the leading 1'
 });
 
 test('settings: phone numbers are checked and turned into E.164 for Plivo', () => {
-  const c = load({ NODE_ENV: 'test', OWNER_PHONE: '(205) 555-0100', SERVICE_NUMBER: '1-205-555-0199', GATE_CODE: '4321' });
+  const c = load({ NODE_ENV: 'test', OWNER_PHONE: '(205) 555-0100', SERVICE_NUMBER: '1-205-555-0199', GATE_CODE: '830571' });
   assert.strictEqual(c.ownerPhoneE164, '+12055550100');
   assert.strictEqual(c.serviceNumberE164, '+12055550199');
   assert.throws(() => load({ NODE_ENV: 'test', OWNER_PHONE: '555-0100' }), /10-digit/);
@@ -76,11 +76,18 @@ test('settings: phone numbers are checked and turned into E.164 for Plivo', () =
 });
 
 test('settings: a bad code is refused, and a weak one outside tests', () => {
-  assert.throws(() => load({ NODE_ENV: 'test', GATE_CODE: '12ab' }), /4 to 8 digits/);
-  assert.throws(() => load({ NODE_ENV: 'test', GATE_CODE: '123' }), /4 to 8 digits/);
-  assert.throws(() => load({ ...PROD, GATE_CODE: '1234' }), /too easy/);
-  assert.throws(() => load({ ...PROD, GATE_CODE: '7777' }), /too easy/);
+  assert.throws(() => load({ NODE_ENV: 'test', GATE_CODE: '12ab' }), /6 to 8 digits/);
+  assert.throws(() => load({ NODE_ENV: 'test', GATE_CODE: '123' }), /6 to 8 digits/);
+  assert.throws(() => load({ ...PROD, GATE_CODE: '123456789' }), /6 to 8 digits/);
   assert.doesNotThrow(() => load(PROD));
+});
+
+test('settings: startup refuses a code shorter than six digits, and an easy six-digit one', () => {
+  for (const short of ['8305', '83057']) assert.throws(() => load({ ...PROD, GATE_CODE: short }), /6 to 8 digits/, short);
+  for (const easy of ['123456', '654321', '111111', '000000', '121212', '123123', '890123', '1234567', '12341234']) {
+    assert.throws(() => load({ ...PROD, GATE_CODE: easy }), /too easy/, easy);
+  }
+  for (const good of ['830571', '4096217', '29384756']) assert.strictEqual(load({ ...PROD, GATE_CODE: good }).code, good);
 });
 
 test('settings: the owner word is required with screening on, and must be plain words', () => {
